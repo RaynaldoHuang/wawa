@@ -1,31 +1,31 @@
-import { Check, Workflow } from "lucide-react";
+import { Check, Workflow } from 'lucide-react';
 
-import Image from "next/image";
+import Image from 'next/image';
 
-import avatar from "@/public/webp/avatar.webp";
-import wedeh from "@/public/webp/withdraw.webp";
+import avatar from '@/public/webp/avatar.webp';
+import wedeh from '@/public/webp/withdraw.webp';
 
-import form from "@/public/webp/form.webp";
+import form from '@/public/webp/form.webp';
 
 export default function FlowSection() {
   return (
     <>
       <section>
-        <div className="max-w-7xl mx-auto">
-          <div className="py-28">
-            <div className="bg-gray-50 py-2 ps-2 pe-4 flex items-center gap-3 w-fit rounded-full">
-              <div className="bg-[#33BB5D] text-white p-1 rounded-full">
+        <div className='max-w-7xl mx-auto px-4 md:px-6'>
+          <div className='py-16 lg:py-28'>
+            <div className='bg-gray-50 py-2 ps-2 pe-4 flex items-center gap-3 w-fit rounded-full'>
+              <div className='bg-[#33BB5D] text-white p-1 rounded-full'>
                 <Workflow size={20} />
               </div>
-              <h1 className="w-fit rounded-full text-[#0A2E1E] font-medium">
+              <h1 className='w-fit rounded-full text-[#0A2E1E] font-medium'>
                 Cara Kerja GUDANG WA
               </h1>
             </div>
-            <div className="flex mt-8 gap-16">
-              <h1 className="text-[#0A2E1E] font-bold text-5xl leading-tight">
+            <div className='flex flex-col lg:flex-row mt-8 gap-8 lg:gap-16'>
+              <h1 className='text-[#0A2E1E] font-bold text-3xl md:text-4xl lg:text-5xl leading-tight'>
                 Mulai Hasilkan dalam 3 Langkah Mudah
               </h1>
-              <p className="text-[#0A2E1E] mt-3 font-light w-1/2 text-right">
+              <p className='text-[#0A2E1E] mt-3 font-light w-full lg:w-1/2 text-left lg:text-right'>
                 Mulai hasilkan uang dari WhatsApp dalam waktu kurang dari 5
                 menit tanpa ribet, tanpa teknis rumit, dan tanpa harus jualan
                 setiap hari.
@@ -33,74 +33,74 @@ export default function FlowSection() {
             </div>
 
             <div>
-              <div className="mt-10">
-                <div className="bg-[#33BB5D] py-6 px-16 rounded-2xl flex gap-20 items-center">
-                  <div className="w-1/2">
-                    <h1 className="text-4xl text-white font-semibold">
+              <div className='mt-10'>
+                <div className='bg-[#33BB5D] py-8 px-6 lg:py-6 lg:px-16 rounded-2xl flex flex-col lg:flex-row gap-10 lg:gap-20 items-center'>
+                  <div className='w-full lg:w-1/2'>
+                    <h1 className='text-2xl lg:text-4xl text-white font-semibold'>
                       Daftar akun gratis sekarang dan mulai rasakan kemudahannya
                       tanpa biaya apa pun.
                     </h1>
-                    <p className="text-white font-light mt-4">
+                    <p className='text-white font-light mt-4'>
                       Proses verifikasi instant, tidak perlu survei panjang atau
                       dokumen ribet. 100% gratis selamanya, tanpa biaya
                       tersembunyi!
                     </p>
 
-                    <div className="flex gap-8 mt-6">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-white p-1 text-[#33BB5D] rounded-full">
+                    <div className='flex gap-8 mt-6'>
+                      <div className='flex items-center gap-3'>
+                        <div className='bg-white p-1 text-[#33BB5D] rounded-full'>
                           <Check size={16} />
                         </div>
-                        <p className="text-white font-semibold">
+                        <p className='text-white font-semibold'>
                           Verifikasi Instant 1 Menit
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="bg-white p-1 text-[#33BB5D] rounded-full">
+                      <div className='flex items-center gap-3'>
+                        <div className='bg-white p-1 text-[#33BB5D] rounded-full'>
                           <Check size={16} />
                         </div>
-                        <p className="text-white font-semibold">
+                        <p className='text-white font-semibold'>
                           Gratis Tanpa Biaya Apapun
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="w-1/2">
+                  <div className='w-full lg:w-1/2 flex justify-center'>
                     <Image
                       src={form}
-                      alt="flow image"
-                      className="relative z-0"
+                      alt='flow image'
+                      className='relative z-0'
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 mt-6 gap-6 items-stretch">
+            <div className='grid grid-cols-1 md:grid-cols-2 mt-6 gap-6 items-stretch'>
               {/* CARD LEFT */}
-              <div className="h-full">
-                <div className="relative bg-gray-50 rounded-2xl p-12 overflow-hidden h-full flex flex-col">
+              <div className='h-full'>
+                <div className='relative bg-gray-50 rounded-2xl p-12 overflow-hidden h-full flex flex-col'>
                   {/* Soft inner glow */}
-                  <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-[#25D366]/10 blur-3xl"></div>
-                  <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-[#FEEA3B]/3 blur-3xl"></div>
+                  <div className='absolute -top-24 -left-24 w-80 h-80 rounded-full bg-[#25D366]/10 blur-3xl'></div>
+                  <div className='absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-[#FEEA3B]/3 blur-3xl'></div>
 
                   {/* IMAGE */}
-                  <div className="relative z-10 h-52 flex items-center justify-center">
+                  <div className='relative z-10 h-52 flex items-center justify-center'>
                     <Image
                       src={avatar}
-                      alt="avatar"
-                      className="max-h-full object-contain px-10"
+                      alt='avatar'
+                      className='max-h-full object-contain px-10'
                     />
                   </div>
 
                   {/* TEXT */}
-                  <div className="mt-8 flex-1">
-                    <h1 className="text-4xl text-[#0A2E1E] font-semibold leading-tight">
+                  <div className='mt-8 flex-1'>
+                    <h1 className='text-2xl lg:text-4xl text-[#0A2E1E] font-semibold leading-tight'>
                       Hubungkan WhatsApp yang Nganggur Untuk Hasilkan Uang.
                     </h1>
-                    <p className="text-[#0A2E1E] font-light mt-4">
+                    <p className='text-[#0A2E1E] font-light mt-4'>
                       Scan QR Code menggunakan WhatsApp Anda, persis sama dengan
                       WhatsApp Web. Dalam 2 menit, WhatsApp Anda siap
                       menghasilkan uang.
@@ -110,27 +110,27 @@ export default function FlowSection() {
               </div>
 
               {/* CARD RIGHT */}
-              <div className="h-full">
-                <div className="relative bg-gray-50 rounded-2xl p-12 overflow-hidden h-full flex flex-col">
+              <div className='h-full'>
+                <div className='relative bg-gray-50 rounded-2xl p-12 overflow-hidden h-full flex flex-col'>
                   {/* Soft inner glow */}
-                  <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-[#FEEA3B]/3 blur-3xl"></div>
-                  <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-[#25D366]/8 blur-3xl"></div>
+                  <div className='absolute -top-24 -left-24 w-80 h-80 rounded-full bg-[#FEEA3B]/3 blur-3xl'></div>
+                  <div className='absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-[#25D366]/8 blur-3xl'></div>
 
                   {/* IMAGE */}
-                  <div className="relative z-10 h-52 flex items-center justify-center">
+                  <div className='relative z-10 h-52 flex items-center justify-center'>
                     <Image
                       src={wedeh}
-                      alt="withdraw"
-                      className="max-h-full object-contain px-10"
+                      alt='withdraw'
+                      className='max-h-full object-contain px-10'
                     />
                   </div>
 
                   {/* TEXT */}
-                  <div className="mt-8 flex-1">
-                    <h1 className="text-4xl text-[#0A2E1E] font-semibold leading-tight">
+                  <div className='mt-8 flex-1'>
+                    <h1 className='text-2xl lg:text-4xl text-[#0A2E1E] font-semibold leading-tight'>
                       Terima dan withdraw uang kamu secara otomatis.
                     </h1>
-                    <p className="text-[#0A2E1E] font-light mt-4">
+                    <p className='text-[#0A2E1E] font-light mt-4'>
                       Setiap pesan terkirim sama dengan uang masuk. Bayaran
                       Rp500 - Rp1000 per pesan langsung ditransfer ke rekening
                       atau e-wallet Anda.
