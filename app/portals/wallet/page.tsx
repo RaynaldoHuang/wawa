@@ -1,18 +1,20 @@
 'use client';
 
-import * as React from 'react';
 import {
-  Wallet,
-  CreditCard,
-  History,
   ArrowDownToLine,
-  Loader2,
+  Building,
   CheckCircle2,
   Clock,
+  CreditCard,
+  History,
+  Loader2,
+  Wallet,
   XCircle,
-  Building,
 } from 'lucide-react';
+import * as React from 'react';
 
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -20,11 +22,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +31,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
 interface WalletData {
