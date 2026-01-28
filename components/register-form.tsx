@@ -65,7 +65,7 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
       {
         onSuccess: () => {
           toast.success('Register berhasil');
-          router.push('/');
+          router.push('/portals');
           router.refresh();
         },
         onError: (ctx) => {

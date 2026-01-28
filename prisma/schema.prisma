@@ -31,8 +31,132 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  // Wallet & Financial
+  walletBalance Float   @default(0)
+  bankName      String?
+  bankAccount   String?
+  bankHolder    String?
+
+  // Referral System
+  referralCode String? @unique
+  referrals    User[]  @relation("Referral")
+  referredBy   User?   @relation("Referral", fields: [referrerId], references: [id])
+  referrerId   String?
+
+  // Relations
+  devices     Device[]
+  withdrawals Withdrawal[]
+  blastJobs   BlastJob[]
+
   @@unique([email])
+  @@index([referrerId])
   @@map("users")
+}
+
+// Device Status
+enum DeviceStatus {
+  CONNECTED
+  DISCONNECTED
+  PAIRING
+  BANNED
+}
+
+// Withdrawal Status
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  REJECTED
+}
+
+// Blast Job Status
+enum BlastJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Device {
+  id           String       @id @default(cuid())
+  userId       String
+  phoneNumber  String       @unique
+  sessionName  String       @unique
+  displayName  String?
+  status       DeviceStatus @default(DISCONNECTED)
+  totalBlast   Int          @default(0)
+  totalSuccess Int          @default(0)
+  totalFailed  Int          @default(0)
+  lastActiveAt DateTime?
+  connectedAt  DateTime?
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blastJobs    BlastJob[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("devices")
+}
+
+model Withdrawal {
+  id          String           @id @default(cuid())
+  userId      String
+  amount      Float
+  fee         Float            @default(0)
+  netAmount   Float
+  bankName    String
+  accountNum  String
+  accountName String
+  status      WithdrawalStatus @default(PENDING)
+  processedAt DateTime?
+  note        String?
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("withdrawals")
+}
+
+model BlastJob {
+  id            String           @id @default(cuid())
+  userId        String
+  deviceId      String
+  totalMessages Int              @default(0)
+  sentCount     Int              @default(0)
+  failedCount   Int              @default(0)
+  status        BlastJobStatus   @default(QUEUED)
+  message       String
+  startedAt     DateTime?
+  completedAt   DateTime?
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device        Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  recipients    BlastRecipient[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([status])
+  @@map("blast_jobs")
+}
+
+model BlastRecipient {
+  id        String    @id @default(cuid())
+  jobId     String
+  phone     String
+  status    String    @default("PENDING") // PENDING, SENT, FAILED
+  sentAt    DateTime?
+  errorMsg  String?
+  job       BlastJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([jobId])
+  @@index([status])
+  @@map("blast_recipients")
 }
 
 model Session {

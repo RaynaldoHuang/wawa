@@ -58,7 +58,7 @@ export function LoginForm({
       {
         onSuccess: () => {
           toast.success('Login successful');
-          router.push('/');
+          router.push('/portals');
           router.refresh();
         },
         onError: (ctx) => {
