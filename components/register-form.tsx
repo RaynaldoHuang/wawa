@@ -1,7 +1,9 @@
 'use client';
 
 import { z } from 'zod';
+import { signUp } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
+import * as React from 'react';
 import {
   Card,
   CardContent,
@@ -49,12 +51,29 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
     },
   });
 
+  const [isLoading, setIsLoading] = React.useState(false);
   const router = useRouter();
 
-  const onSubmit: SubmitHandler<RegisterFormValues> = (data) => {
-    console.log(data);
-    toast.success('Register berhasil');
-    router.push('/login');
+  const onSubmit: SubmitHandler<RegisterFormValues> = async (data) => {
+    setIsLoading(true);
+    await signUp.email(
+      {
+        email: data.email,
+        password: data.password,
+        name: data.name,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Register berhasil');
+          router.push('/');
+          router.refresh();
+        },
+        onError: (ctx) => {
+          toast.error(ctx.error.message);
+          setIsLoading(false);
+        },
+      },
+    );
   };
 
   return (
@@ -122,7 +141,9 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
                 />
               </Field>
               <Field>
-                <Button type='submit'>Daftar</Button>
+                <Button type='submit' loading={isLoading}>
+                  Daftar
+                </Button>
                 <FieldDescription className='text-center'>
                   Sudah punya akun? <Link href='/auth/login'>Masuk</Link>
                 </FieldDescription>

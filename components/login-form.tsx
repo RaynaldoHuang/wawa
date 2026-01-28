@@ -19,7 +19,11 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
+import { signIn } from '@/lib/auth-client';
+import { useRouter } from 'next/navigation';
+import * as React from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import { z } from 'zod';
 
 const formSchema = z.object({
@@ -41,7 +45,29 @@ export function LoginForm({
     },
   });
 
-  const onSubmit: SubmitHandler<LoginFormValues> = (data) => console.log(data);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const router = useRouter();
+
+  const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
+    setIsLoading(true);
+    await signIn.email(
+      {
+        email: data.email,
+        password: data.password,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Login successful');
+          router.push('/');
+          router.refresh();
+        },
+        onError: (ctx) => {
+          toast.error(ctx.error.message);
+          setIsLoading(false);
+        },
+      },
+    );
+  };
 
   return (
     <div className={cn('flex flex-col gap-6 min-w-sm', className)} {...props}>
@@ -96,7 +122,9 @@ export function LoginForm({
                 />
               </Field>
               <Field>
-                <Button type='submit'>Masuk</Button>
+                <Button type='submit' loading={isLoading}>
+                  Masuk
+                </Button>
                 <FieldDescription className='text-center'>
                   Belum punya akun? <Link href='/auth/register'>Daftar</Link>
                 </FieldDescription>
