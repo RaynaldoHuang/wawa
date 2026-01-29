@@ -1,36 +1,19 @@
 'use client';
 
-import * as React from 'react';
+import {
+  ChevronDown,
+  CreditCard,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  Smartphone,
+  Users,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  LayoutDashboard,
-  Users,
-  Smartphone,
-  CreditCard,
-  Settings,
-  LogOut,
-  ChevronDown,
-  ShieldCheck,
-} from 'lucide-react';
-import Image from 'next/image';
-import logo from '@/public/webp/logo.webp';
+import * as React from 'react';
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -40,7 +23,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
-import { useSession, signOut } from '@/lib/auth-client';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
+import { signOut, useSession } from '@/lib/auth-client';
 
 const adminMenuItems = [
   {
@@ -163,15 +161,9 @@ function AdminSidebar() {
                 sideOffset={4}
               >
                 <DropdownMenuItem asChild>
-                  <Link href='/portals'>
-                    <Image
-                      src={logo}
-                      alt='WAWA'
-                      width={16}
-                      height={16}
-                      className='mr-2'
-                    />
-                    Back to Portal
+                  <Link href='/admin/profile'>
+                    <Settings className='mr-2 h-4 w-4' />
+                    Profile
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -193,6 +185,19 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const { data: session, isPending } = useSession();
+
+  React.useEffect(() => {
+    if (!isPending && session?.user && (session.user as any).role !== 'ADMIN') {
+      router.replace('/portals');
+    }
+  }, [session, isPending, router]);
+
+  if (isPending) {
+    return null; // or a loading spinner
+  }
+
   return (
     <SidebarProvider>
       <AdminSidebar />

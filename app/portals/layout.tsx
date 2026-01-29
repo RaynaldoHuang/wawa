@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Smartphone,
@@ -10,7 +10,10 @@ import {
   Settings,
   LogOut,
   ChevronDown,
+  User,
 } from 'lucide-react';
+// ... imports ...
+
 import Image from 'next/image';
 import logo from '@/public/webp/logo.webp';
 
@@ -159,9 +162,9 @@ function AppSidebar() {
                 sideOffset={4}
               >
                 <DropdownMenuItem asChild>
-                  <Link href='/portals/settings'>
-                    <Settings className='mr-2 h-4 w-4' />
-                    Settings
+                  <Link href='/portals/profile'>
+                    <User className='mr-2 h-4 w-4' />
+                    Profile
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -183,6 +186,19 @@ export default function PortalsLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const { data: session, isPending } = useSession();
+
+  React.useEffect(() => {
+    if (!isPending && session?.user && (session.user as any).role === 'ADMIN') {
+      router.replace('/admin/dashboard');
+    }
+  }, [session, isPending, router]);
+
+  if (isPending) {
+    return null; // or a loading spinner
+  }
+
   return (
     <SidebarProvider>
       <AppSidebar />

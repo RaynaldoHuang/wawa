@@ -44,6 +44,90 @@ export const app = new Elysia({ prefix: '/api' })
   .get('/user', () => 'User Secret', {
     role: 'USER',
   })
+  // ==================== PROFILE ====================
+  .get(
+    '/profile',
+    async ({ user }) => {
+      const userData = await db.user.findUnique({
+        where: { id: user!.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          role: true,
+        },
+      });
+      return userData;
+    },
+    { auth: true },
+  )
+  .patch(
+    '/profile',
+    async ({ user, body }) => {
+      const { name, password } = body;
+
+      const updateData: any = {};
+      if (name) updateData.name = name;
+
+      if (password) {
+        const hashedPassword = await hashPassword(password);
+        const account = await db.account.findFirst({
+          where: { userId: user!.id, providerId: 'credential' },
+        });
+
+        if (account) {
+          await db.account.update({
+            where: { id: account.id },
+            data: { password: hashedPassword },
+          });
+        } else {
+          await db.account.create({
+            data: {
+              id: randomUUID(),
+              userId: user!.id,
+              providerId: 'credential',
+              accountId: user!.email,
+              password: hashedPassword,
+            },
+          });
+        }
+      }
+
+      const updatedUser = await db.user.update({
+        where: { id: user!.id },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          role: true,
+        },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'UPDATE_PROFILE',
+          target: user!.id,
+          details: JSON.stringify({
+            nameChanged: !!name,
+            passwordChanged: !!password,
+          }),
+        },
+      });
+
+      return updatedUser;
+    },
+    {
+      auth: true,
+      body: t.Object({
+        name: t.Optional(t.String()),
+        password: t.Optional(t.String()),
+      }),
+    },
+  )
   // ==================== DEVICES ====================
   .get(
     '/devices',
