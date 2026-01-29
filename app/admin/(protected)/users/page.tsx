@@ -20,8 +20,26 @@ import {
 } from '@/components/ui/select';
 import { DataTable } from '@/components/admin/data-table';
 import { useDebounce } from '@/hooks/use-debounce';
-import { MoreHorizontal, Ban, UserCheck, Shield } from 'lucide-react';
+import {
+  MoreHorizontal,
+  Ban,
+  UserCheck,
+  Shield,
+  Plus,
+  Trash2,
+  Pencil,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface User {
   id: string;
@@ -50,6 +68,33 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [rowSelection, setRowSelection] = useState({});
+
+  // Dialog State
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState<User | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'USER',
+  });
+
+  const resetForm = () => {
+    setFormData({ name: '', email: '', password: '', role: 'USER' });
+    setUserToEdit(null);
+  };
+
+  const handleEditClick = (user: User) => {
+    setUserToEdit(user);
+    setFormData({
+      name: user.name,
+      email: user.email,
+      password: '', // Don't fill password
+      role: user.role,
+    });
+    setIsEditOpen(true);
+  };
 
   const debouncedSearch = useDebounce(globalFilter, 300);
 
@@ -137,6 +182,77 @@ export default function AdminUsersPage() {
     },
     onError: () => {
       toast.error('Failed to update user role');
+    },
+  });
+
+  // Create User Mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create user');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('User created successfully');
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setIsAddOpen(false);
+      resetForm();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  // Update User Mutation
+  const updateMutation = useMutation({
+    mutationFn: async (data: typeof formData & { id: string }) => {
+      const res = await fetch(`/api/admin/users/${data.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          ...(data.password ? { password: data.password } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to update user');
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('User updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setIsEditOpen(false);
+      resetForm();
+    },
+    onError: () => {
+      toast.error('Failed to update user');
+    },
+  });
+
+  // Delete (Ban) User Mutation - Explicit Delete Action
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      // We use the DELETE endpoint which performs soft delete (BAN)
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete user');
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('User deleted (banned) successfully');
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+    onError: () => {
+      toast.error('Failed to delete user');
     },
   });
 
@@ -228,37 +344,32 @@ export default function AdminUsersPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end'>
+              <DropdownMenuItem onClick={() => handleEditClick(user)}>
+                <Pencil className='mr-2 h-4 w-4' /> Edit
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => banMutation.mutate(user.id)}
                 className={
-                  user.status === 'BANNED' ? 'text-green-600' : 'text-red-600'
+                  user.status === 'BANNED'
+                    ? 'text-green-600'
+                    : 'text-orange-600'
                 }
               >
                 {user.status === 'BANNED' ? (
                   <>
-                    <UserCheck className='mr-2 h-4 w-4' /> Unban User
+                    <UserCheck className='mr-2 h-4 w-4' /> Unban
                   </>
                 ) : (
                   <>
-                    <Ban className='mr-2 h-4 w-4' /> Ban User
+                    <Ban className='mr-2 h-4 w-4' /> Ban (Suspend)
                   </>
                 )}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() =>
-                  roleMutation.mutate({ userId: user.id, role: 'STAFF' })
-                }
-                disabled={user.role === 'STAFF'}
+                onClick={() => deleteMutation.mutate(user.id)}
+                className='text-red-600'
               >
-                <Shield className='mr-2 h-4 w-4' /> Make Staff
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  roleMutation.mutate({ userId: user.id, role: 'USER' })
-                }
-                disabled={user.role === 'USER'}
-              >
-                <Shield className='mr-2 h-4 w-4' /> Make User
+                <Trash2 className='mr-2 h-4 w-4' /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -274,9 +385,173 @@ export default function AdminUsersPage() {
 
   return (
     <div className='space-y-6'>
-      <div>
-        <h1 className='text-3xl font-bold'>Users & Staff</h1>
-        <p className='text-muted-foreground'>Manage users and staff members</p>
+      <div className='flex justify-between items-center'>
+        <div>
+          <h1 className='text-3xl font-bold'>Users & Staff</h1>
+          <p className='text-muted-foreground'>
+            Manage users and staff members
+          </p>
+        </div>
+        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={resetForm}>
+              <Plus className='mr-2 h-4 w-4' /> Add User
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New User</DialogTitle>
+            </DialogHeader>
+            <div className='grid gap-4 py-4'>
+              <div className='grid gap-2'>
+                <Label htmlFor='name'>Name</Label>
+                <Input
+                  id='name'
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='email'>Email</Label>
+                <Input
+                  id='email'
+                  type='email'
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='password'>Password</Label>
+                <Input
+                  id='password'
+                  type='password'
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='role'>Role</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(val) =>
+                    setFormData({ ...formData, role: val })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder='Select Role' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='USER'>User</SelectItem>
+                    <SelectItem value='STAFF'>Staff</SelectItem>
+                    <SelectItem value='ADMIN'>Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant='outline'
+                onClick={() => setIsAddOpen(false)}
+                disabled={createMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => createMutation.mutate(formData)}
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? 'Creating...' : 'Create User'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit User</DialogTitle>
+            </DialogHeader>
+            <div className='grid gap-4 py-4'>
+              <div className='grid gap-2'>
+                <Label htmlFor='edit-name'>Name</Label>
+                <Input
+                  id='edit-name'
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='edit-email'>Email</Label>
+                <Input
+                  id='edit-email'
+                  type='email'
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='edit-password'>
+                  Password (Leave blank to keep)
+                </Label>
+                <Input
+                  id='edit-password'
+                  type='password'
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='edit-role'>Role</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(val) =>
+                    setFormData({ ...formData, role: val })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder='Select Role' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='USER'>User</SelectItem>
+                    <SelectItem value='STAFF'>Staff</SelectItem>
+                    <SelectItem value='ADMIN'>Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant='outline'
+                onClick={() => setIsEditOpen(false)}
+                disabled={updateMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() =>
+                  userToEdit &&
+                  updateMutation.mutate({ ...formData, id: userToEdit.id })
+                }
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Filters */}

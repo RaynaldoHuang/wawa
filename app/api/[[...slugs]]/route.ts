@@ -1,4 +1,6 @@
 import { Elysia, t } from 'elysia';
+import { hashPassword } from 'better-auth/crypto';
+import { randomUUID } from 'crypto';
 
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
@@ -456,6 +458,354 @@ export const app = new Elysia({ prefix: '/api' })
         ]),
       }),
     },
+  )
+  .post(
+    '/admin/users',
+    async ({ body, user }) => {
+      const { name, email, password, role } = body;
+
+      const existingUser = await db.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        return new Response(JSON.stringify({ error: 'Email already exists' }), {
+          status: 400,
+        });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const userId = randomUUID();
+
+      const newUser = await db.user.create({
+        data: {
+          id: userId,
+          name,
+          email,
+          role: role as 'USER' | 'STAFF' | 'ADMIN',
+          image: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+          walletBalance: 0,
+          status: 'ACTIVE',
+          accounts: {
+            create: {
+              id: randomUUID(),
+              providerId: 'credential',
+              accountId: email,
+              password: hashedPassword,
+            },
+          },
+        },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'CREATE_USER',
+          target: newUser.id,
+          details: JSON.stringify({ name, email, role }),
+        },
+      });
+
+      return newUser;
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        name: t.String(),
+        email: t.String(),
+        password: t.String(),
+        role: t.Union([
+          t.Literal('USER'),
+          t.Literal('STAFF'),
+          t.Literal('ADMIN'),
+        ]),
+      }),
+    },
+  )
+  .patch(
+    '/admin/users/:id',
+    async ({ params, body, user }) => {
+      const { name, email, password, role } = body;
+
+      const existingUser = await db.user.findUnique({
+        where: { id: params.id },
+      });
+
+      if (!existingUser) {
+        return new Response(JSON.stringify({ error: 'User not found' }), {
+          status: 404,
+        });
+      }
+
+      const updateData: any = {};
+      if (name) updateData.name = name;
+      if (email) updateData.email = email;
+      if (role) updateData.role = role;
+
+      if (password) {
+        const hashedPassword = await hashPassword(password);
+        const account = await db.account.findFirst({
+          where: { userId: params.id, providerId: 'credential' },
+        });
+
+        if (account) {
+          await db.account.update({
+            where: { id: account.id },
+            data: { password: hashedPassword },
+          });
+        } else {
+          await db.account.create({
+            data: {
+              id: randomUUID(),
+              userId: params.id,
+              providerId: 'credential',
+              accountId: email || existingUser.email,
+              password: hashedPassword,
+            },
+          });
+        }
+      }
+
+      const updatedUser = await db.user.update({
+        where: { id: params.id },
+        data: updateData,
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'UPDATE_USER',
+          target: params.id,
+          details: JSON.stringify({
+            name,
+            email,
+            role,
+            passwordChanged: !!password,
+          }),
+        },
+      });
+
+      return updatedUser;
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        name: t.Optional(t.String()),
+        email: t.Optional(t.String()),
+        password: t.Optional(t.String()),
+        role: t.Optional(
+          t.Union([t.Literal('USER'), t.Literal('STAFF'), t.Literal('ADMIN')]),
+        ),
+      }),
+    },
+  )
+  .delete(
+    '/admin/users/:id',
+    async ({ params, user }) => {
+      const targetUser = await db.user.findUnique({
+        where: { id: params.id },
+      });
+
+      if (!targetUser) {
+        return new Response(JSON.stringify({ error: 'User not found' }), {
+          status: 404,
+        });
+      }
+
+      const newStatus = 'BANNED';
+
+      await db.user.update({
+        where: { id: params.id },
+        data: { status: newStatus },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'DELETE_USER',
+          target: params.id,
+          details: JSON.stringify({
+            email: targetUser.email,
+            note: 'Soft deleted (BANNED)',
+          }),
+        },
+      });
+
+      return { success: true, status: newStatus };
+    },
+    { role: 'ADMIN' },
+  )
+  .post(
+    '/admin/users',
+    async ({ body, user }) => {
+      const { name, email, password, role } = body;
+
+      const existingUser = await db.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        return new Response(JSON.stringify({ error: 'Email already exists' }), {
+          status: 400,
+        });
+      }
+
+      const hashedPassword = await hashPassword(password);
+
+      const newUser = await db.user.create({
+        data: {
+          name,
+          email,
+          role: role as 'USER' | 'STAFF' | 'ADMIN',
+          image: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+          walletBalance: 0,
+          status: 'ACTIVE',
+          accounts: {
+            create: {
+              providerId: 'credential',
+              accountId: email,
+              password: hashedPassword,
+            },
+          },
+        },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'CREATE_USER',
+          target: newUser.id,
+          details: JSON.stringify({ name, email, role }),
+        },
+      });
+
+      return newUser;
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        name: t.String(),
+        email: t.String(),
+        password: t.String(),
+        role: t.Union([
+          t.Literal('USER'),
+          t.Literal('STAFF'),
+          t.Literal('ADMIN'),
+        ]),
+      }),
+    },
+  )
+  .patch(
+    '/admin/users/:id',
+    async ({ params, body, user }) => {
+      const { name, email, password, role } = body;
+
+      const existingUser = await db.user.findUnique({
+        where: { id: params.id },
+      });
+
+      if (!existingUser) {
+        return new Response(JSON.stringify({ error: 'User not found' }), {
+          status: 404,
+        });
+      }
+
+      const updateData: any = {};
+      if (name) updateData.name = name;
+      if (email) updateData.email = email;
+      if (role) updateData.role = role;
+
+      if (password) {
+        const hashedPassword = await hashPassword(password);
+        const account = await db.account.findFirst({
+          where: { userId: params.id, providerId: 'credential' },
+        });
+
+        if (account) {
+          await db.account.update({
+            where: { id: account.id },
+            data: { password: hashedPassword },
+          });
+        } else {
+          await db.account.create({
+            data: {
+              userId: params.id,
+              providerId: 'credential',
+              accountId: email || existingUser.email,
+              password: hashedPassword,
+            },
+          });
+        }
+      }
+
+      const updatedUser = await db.user.update({
+        where: { id: params.id },
+        data: updateData,
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'UPDATE_USER',
+          target: params.id,
+          details: JSON.stringify({
+            name,
+            email,
+            role,
+            passwordChanged: !!password,
+          }),
+        },
+      });
+
+      return updatedUser;
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        name: t.Optional(t.String()),
+        email: t.Optional(t.String()),
+        password: t.Optional(t.String()),
+        role: t.Optional(
+          t.Union([t.Literal('USER'), t.Literal('STAFF'), t.Literal('ADMIN')]),
+        ),
+      }),
+    },
+  )
+  .delete(
+    '/admin/users/:id',
+    async ({ params, user }) => {
+      const targetUser = await db.user.findUnique({
+        where: { id: params.id },
+      });
+
+      if (!targetUser) {
+        return new Response(JSON.stringify({ error: 'User not found' }), {
+          status: 404,
+        });
+      }
+
+      const newStatus = 'BANNED';
+
+      await db.user.update({
+        where: { id: params.id },
+        data: { status: newStatus },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'DELETE_USER',
+          target: params.id,
+          details: JSON.stringify({
+            email: targetUser.email,
+            note: 'Soft deleted (BANNED)',
+          }),
+        },
+      });
+
+      return { success: true, status: newStatus };
+    },
+    { role: 'ADMIN' },
   )
   // ==================== ADMIN: DEVICES ====================
   .get(
