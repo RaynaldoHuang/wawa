@@ -81,7 +81,7 @@ function AdminSidebar() {
   };
 
   return (
-    <Sidebar variant='inset'>
+    <Sidebar variant='sidebar'>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -211,7 +211,7 @@ export default function AdminLayout({
           }}
         />
 
-        <header className='flex h-16 shrink-0 items-center gap-2 border-b px-4 relative z-10 bg-background/50 backdrop-blur-sm'>
+        <header className='flex h-16 shrink-0 items-center gap-2 border-b px-4 relative z-10  backdrop-blur-sm bg-white'>
           <SidebarTrigger className='-ml-1' />
           <Separator orientation='vertical' className='mr-2 h-4' />
           <div className='flex items-center gap-2'>
@@ -219,7 +219,7 @@ export default function AdminLayout({
             <span className='font-semibold'>Admin Panel</span>
           </div>
         </header>
-        <main className='flex-1 overflow-auto p-6 relative z-10'>
+        <main className='flex-1 overflow-auto p-6 relative z-10 bg-white'>
           {children}
         </main>
       </SidebarInset>

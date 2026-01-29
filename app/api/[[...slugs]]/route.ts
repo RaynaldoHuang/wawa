@@ -502,6 +502,101 @@ export const app = new Elysia({ prefix: '/api' })
     },
     { role: 'ADMIN' },
   )
+  .get(
+    '/admin/devices/export',
+    async ({ query }) => {
+      const sortField = query.sortField || 'createdAt';
+      const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
+      const status = query.status || undefined;
+      const search = query.search || '';
+      const startDate = query.startDate ? new Date(query.startDate) : undefined;
+      const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+      const where = {
+        AND: [
+          search
+            ? {
+                user: {
+                  OR: [
+                    {
+                      name: { contains: search, mode: 'insensitive' as const },
+                    },
+                    {
+                      email: { contains: search, mode: 'insensitive' as const },
+                    },
+                  ],
+                },
+              }
+            : {},
+          status
+            ? {
+                status: status as
+                  | 'CONNECTED'
+                  | 'DISCONNECTED'
+                  | 'PAIRING'
+                  | 'BANNED',
+              }
+            : {},
+          startDate ? { createdAt: { gte: startDate } } : {},
+          endDate ? { createdAt: { lte: endDate } } : {},
+        ],
+      };
+
+      const devices = await db.device.findMany({
+        where,
+        orderBy: { [sortField]: sortOrder },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      });
+
+      const csvRows = [
+        [
+          'ID',
+          'User Name',
+          'User Email',
+          'Phone Number',
+          'Session Name',
+          'Status',
+          'Total Blast',
+          'Total Success',
+          'Total Failed',
+          'Connected At',
+          'Created At',
+        ].join(','),
+      ];
+
+      for (const d of devices) {
+        csvRows.push(
+          [
+            d.id,
+            `"${d.user.name}"`,
+            d.user.email,
+            d.phoneNumber,
+            d.sessionName,
+            d.status,
+            d.totalBlast,
+            d.totalSuccess,
+            d.totalFailed,
+            d.connectedAt ? d.connectedAt.toISOString() : '',
+            d.createdAt.toISOString(),
+          ].join(','),
+        );
+      }
+
+      const csvContent = csvRows.join('\n');
+
+      return new Response(csvContent, {
+        headers: {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': `attachment; filename="devices-export-${new Date().toISOString().split('T')[0]}.csv"`,
+        },
+      });
+    },
+    { role: 'ADMIN' },
+  )
   .post(
     '/admin/devices/:id/disconnect',
     async ({ params, user }) => {
