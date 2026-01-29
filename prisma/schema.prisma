@@ -13,8 +13,9 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserType {
+enum Role {
   USER
+  STAFF
   ADMIN
 }
 
@@ -25,7 +26,8 @@ model User {
   emailVerified Boolean   @default(false)
   image         String?
   phone         String?
-  type          UserType  @default(USER)
+  role          Role      @default(USER)
+  status        String    @default("ACTIVE") // ACTIVE, BANNED
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
@@ -47,6 +49,7 @@ model User {
   devices     Device[]
   withdrawals Withdrawal[]
   blastJobs   BlastJob[]
+  auditLogs   AuditLog[]
 
   @@unique([email])
   @@index([referrerId])
@@ -205,4 +208,28 @@ model Verification {
 
   @@index([identifier])
   @@map("verifications")
+}
+
+model GlobalSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("global_settings")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  target    String
+  details   String?
+  admin     User     @relation(fields: [adminId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

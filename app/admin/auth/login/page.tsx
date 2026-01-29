@@ -1,9 +1,5 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -14,10 +10,14 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { signIn } from '@/lib/auth-client';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { Loader2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import * as z from 'zod';
 
 const formSchema = z.object({
   email: z.string().email(),
@@ -92,21 +92,14 @@ export default function AdminLoginPage() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type='password' {...field} />
+                    <Input type='password' placeholder='••••••••' {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type='submit' className='w-full' disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Authenticating...
-                </>
-              ) : (
-                'Admin Sign In'
-              )}
+            <Button type='submit' className='w-full mt-2' loading={isLoading}>
+              Masuk
             </Button>
           </form>
         </Form>

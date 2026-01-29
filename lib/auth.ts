@@ -14,5 +14,14 @@ export const auth = betterAuth({
     minPasswordLength: 6,
     revokeSessionsOnPasswordReset: true,
   },
+  user: {
+    additionalFields: {
+      role: {
+        type: 'string',
+        required: true,
+        defaultValue: 'USER',
+      },
+    },
+  },
   plugins: [],
 });
