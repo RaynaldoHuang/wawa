@@ -38,14 +38,17 @@ export default function NavBar() {
           {/* DESKTOP MENU - RIGHT */}
           <div className='hidden lg:flex ml-auto items-center gap-8'>
             <Link
-              href=''
+              href='/auth/login'
               className='font-medium text-[#0E4643] hover:text-[#33BB5D] transition-colors'
             >
               Masuk
             </Link>
-            <button className='rounded-full bg-[#33BB5D] px-6 py-2 font-semibold text-white cursor-pointer hover:bg-[#33BB5D]/90 transition-all'>
+            <Link
+              href='/auth/register'
+              className='rounded-full bg-[#33BB5D] px-6 py-2 font-semibold text-white cursor-pointer hover:bg-[#33BB5D]/90 transition-all'
+            >
               Daftar Gratis
-            </button>
+            </Link>
           </div>
 
           {/* MOBILE MENU BUTTON */}
