@@ -20,7 +20,7 @@ enum Role {
 }
 
 model User {
-  id            String    @id
+  id            String    @id @default(cuid())
   name          String
   email         String
   emailVerified Boolean   @default(false)
@@ -163,7 +163,7 @@ model BlastRecipient {
 }
 
 model Session {
-  id        String   @id
+  id        String   @id @default(cuid())
   expiresAt DateTime
   token     String
   createdAt DateTime @default(now())
@@ -199,7 +199,7 @@ model Account {
 }
 
 model Verification {
-  id         String   @id
+  id         String   @id @default(cuid())
   identifier String
   value      String
   expiresAt  DateTime
@@ -226,7 +226,7 @@ model AuditLog {
   action    String
   target    String
   details   String?
-  admin     User     @relation(fields: [adminId], references: [id])
+  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@index([adminId])
