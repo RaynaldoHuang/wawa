@@ -6,7 +6,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { join } from 'path';
-import { rm } from 'fs/promises';
+import { mkdir, rm } from 'fs/promises';
 
 // Session storage path
 const SESSIONS_PATH = join(process.cwd(), 'storages', 'wa-sessions');
@@ -68,7 +68,14 @@ export class WAManager {
     }
 
     const sessionPath = this.getSessionPath(deviceId);
+    await mkdir(sessionPath, { recursive: true });
+
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+
+    console.info('[WA] connect start', {
+      deviceId,
+      usePairingCode: !!options.usePairingCode,
+    });
 
     const socket = makeWASocket({
       auth: state,
@@ -89,6 +96,10 @@ export class WAManager {
       async (update: Partial<ConnectionState>) => {
         const { connection, lastDisconnect, qr } = update;
 
+        if (qr) {
+          console.info('[WA] qr update', { deviceId });
+        }
+
         if (qr && !options.usePairingCode) {
           device.qr = qr;
           device.status = 'PAIRING';
@@ -96,6 +107,7 @@ export class WAManager {
         }
 
         if (connection === 'open') {
+          console.info('[WA] connected', { deviceId });
           device.status = 'CONNECTED';
           device.qr = undefined;
           device.pairingCode = undefined;
@@ -111,6 +123,12 @@ export class WAManager {
           const statusCode = (lastDisconnect?.error as Boom)?.output
             ?.statusCode;
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+          console.warn('[WA] disconnected', {
+            deviceId,
+            statusCode,
+            shouldReconnect,
+          });
 
           device.status = 'DISCONNECTED';
 
