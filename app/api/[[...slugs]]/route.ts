@@ -171,15 +171,43 @@ export const app = new Elysia({ prefix: '/api' })
       let qrCode: string | undefined;
       let pairingCode: string | undefined;
 
+      // Wait for the first pairing artifact so the client can render immediately
+      let settlePairing: (value: {
+        qr?: string;
+        pairingCode?: string;
+        status?: 'CONNECTED';
+      }) => void;
+      let pairingSettled = false;
+      const settleOnce = (value: {
+        qr?: string;
+        pairingCode?: string;
+        status?: 'CONNECTED';
+      }) => {
+        if (!pairingSettled) {
+          pairingSettled = true;
+          settlePairing(value);
+        }
+      };
+      const pairingPromise = new Promise<{
+        qr?: string;
+        pairingCode?: string;
+        status?: 'CONNECTED';
+      }>((resolve) => {
+        settlePairing = resolve;
+        setTimeout(() => settleOnce({}), 15000);
+      });
+
       // Connect via WAManager
       await waManager.connect(device.id, {
         phoneNumber,
         usePairingCode,
         onQR: (qr) => {
           qrCode = qr;
+          settleOnce({ qr });
         },
         onPairingCode: (code) => {
           pairingCode = code;
+          settleOnce({ pairingCode: code });
         },
         onConnected: async (phone) => {
           await db.device.update({
@@ -190,6 +218,7 @@ export const app = new Elysia({ prefix: '/api' })
               connectedAt: new Date(),
             },
           });
+          settleOnce({ status: 'CONNECTED' });
         },
         onDisconnected: async () => {
           await db.device.update({
@@ -199,16 +228,16 @@ export const app = new Elysia({ prefix: '/api' })
         },
       });
 
-      // Wait briefly for QR/code
-      await new Promise((r) => setTimeout(r, 3500));
+      const pairingResult = await pairingPromise;
 
       const waDevice = waManager.getDevice(device.id);
 
       return {
         deviceId: device.id,
         status: waDevice?.status || 'PAIRING',
-        qr: waDevice?.qr || qrCode,
-        pairingCode: waDevice?.pairingCode || pairingCode,
+        qr: waDevice?.qr || pairingResult.qr || qrCode,
+        pairingCode:
+          waDevice?.pairingCode || pairingResult.pairingCode || pairingCode,
       };
     },
     {
