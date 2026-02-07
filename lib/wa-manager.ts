@@ -95,6 +95,14 @@ export class WAManager {
       'connection.update',
       async (update: Partial<ConnectionState>) => {
         const { connection, lastDisconnect, qr } = update;
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+
+        console.info('[WA] update', {
+          deviceId,
+          connection,
+          hasQr: !!qr,
+          statusCode,
+        });
 
         if (qr) {
           console.info('[WA] qr update', { deviceId });
@@ -120,8 +128,6 @@ export class WAManager {
         }
 
         if (connection === 'close') {
-          const statusCode = (lastDisconnect?.error as Boom)?.output
-            ?.statusCode;
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
           console.warn('[WA] disconnected', {
