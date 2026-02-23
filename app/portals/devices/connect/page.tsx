@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { QrCode, Keyboard, ArrowLeft, Loader2, Check, X } from 'lucide-react';
 import QRCodeSVG from 'qrcode';
 
@@ -27,6 +27,7 @@ type ConnectionStatus =
 
 export default function ConnectDevicePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [phoneNumber, setPhoneNumber] = React.useState('');
   const [pairingMethod, setPairingMethod] = React.useState<PairingMethod>(null);
   const [status, setStatus] = React.useState<ConnectionStatus>('idle');
@@ -34,6 +35,42 @@ export default function ConnectDevicePage() {
   const [pairingCode, setPairingCode] = React.useState<string | null>(null);
   const [deviceId, setDeviceId] = React.useState<string | null>(null);
   const pollRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const startPolling = React.useCallback(
+    (id: string, method: PairingMethod) => {
+      if (pollRef.current) clearInterval(pollRef.current);
+
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/devices/${id}/status`, {
+            credentials: 'include',
+          });
+          const data = await res.json();
+
+          if (data.status === 'CONNECTED') {
+            setStatus('connected');
+            toast.success('Device berhasil terhubung!');
+            if (pollRef.current) clearInterval(pollRef.current);
+            setTimeout(() => router.push('/portals/devices'), 1500);
+            return;
+          }
+
+          if (method === 'qr' && data.qr) {
+            const qrDataUrl = await QRCodeSVG.toDataURL(data.qr, {
+              width: 256,
+              margin: 2,
+            });
+            setQrCode(qrDataUrl);
+          } else if (method === 'code' && data.pairingCode) {
+            setPairingCode(data.pairingCode);
+          }
+        } catch (error) {
+          console.error('Polling error:', error);
+        }
+      }, 3000);
+    },
+    [router],
+  );
 
   const startConnection = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -87,7 +124,7 @@ export default function ConnectDevicePage() {
       }
 
       // Start polling for status
-      startPolling(data.deviceId);
+      startPolling(data.deviceId, pairingMethod);
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('Terjadi kesalahan');
@@ -95,33 +132,71 @@ export default function ConnectDevicePage() {
     }
   };
 
-  const startPolling = (id: string) => {
-    pollRef.current = setInterval(async () => {
+  const resumePairing = React.useCallback(
+    async (id: string, method: PairingMethod) => {
+      if (!method) return;
+
+      setStatus('connecting');
+      setDeviceId(id);
+      setPairingMethod(method);
+      setQrCode(null);
+      setPairingCode(null);
+
       try {
         const res = await fetch(`/api/devices/${id}/status`, {
           credentials: 'include',
         });
         const data = await res.json();
 
+        if (!res.ok) {
+          toast.error(data.error || 'Gagal melanjutkan pairing');
+          setStatus('failed');
+          return;
+        }
+
+        if (data.phoneNumber) {
+          setPhoneNumber(data.phoneNumber);
+        }
+
         if (data.status === 'CONNECTED') {
           setStatus('connected');
           toast.success('Device berhasil terhubung!');
-          if (pollRef.current) clearInterval(pollRef.current);
           setTimeout(() => router.push('/portals/devices'), 1500);
-        } else if (data.qr && pairingMethod === 'qr') {
+          return;
+        }
+
+        setStatus('pairing');
+
+        if (method === 'qr' && data.qr) {
           const qrDataUrl = await QRCodeSVG.toDataURL(data.qr, {
             width: 256,
             margin: 2,
           });
           setQrCode(qrDataUrl);
-        } else if (data.pairingCode && pairingMethod === 'code') {
+        } else if (method === 'code' && data.pairingCode) {
           setPairingCode(data.pairingCode);
         }
+
+        startPolling(id, method);
       } catch (error) {
-        console.error('Polling error:', error);
+        console.error('Resume pairing error:', error);
+        toast.error('Terjadi kesalahan');
+        setStatus('failed');
       }
-    }, 3000);
-  };
+    },
+    [router, startPolling],
+  );
+
+  React.useEffect(() => {
+    const id = searchParams.get('deviceId');
+    const methodParam = searchParams.get('method');
+    const method: PairingMethod =
+      methodParam === 'code' ? 'code' : methodParam === 'qr' ? 'qr' : null;
+
+    if (!id || !method) return;
+
+    resumePairing(id, method);
+  }, [resumePairing, searchParams]);
 
   React.useEffect(() => {
     return () => {
@@ -139,6 +214,8 @@ export default function ConnectDevicePage() {
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
+  const isResumingExistingDevice = Boolean(deviceId && pairingMethod);
+
   return (
     <div className='max-w-2xl mx-auto space-y-6'>
       {/* Header */}
@@ -155,7 +232,7 @@ export default function ConnectDevicePage() {
       </div>
 
       {/* Step 1: Phone Number */}
-      {status === 'idle' && !pairingMethod && (
+      {status === 'idle' && !pairingMethod && !isResumingExistingDevice && (
         <Card>
           <CardHeader>
             <CardTitle>Masukkan Nomor Telepon</CardTitle>
@@ -181,38 +258,41 @@ export default function ConnectDevicePage() {
       )}
 
       {/* Step 2: Choose Method */}
-      {status === 'idle' && !pairingMethod && phoneNumber.length >= 10 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Pilih Metode Pairing</CardTitle>
-            <CardDescription>
-              Cara menghubungkan device WhatsApp
-            </CardDescription>
-          </CardHeader>
-          <CardContent className='grid grid-cols-2 gap-4'>
-            <button
-              onClick={() => setPairingMethod('qr')}
-              className='p-6 rounded-xl border-2 border-muted hover:border-primary hover:bg-primary/5 transition-all text-center group'
-            >
-              <QrCode className='h-12 w-12 mx-auto mb-3 text-muted-foreground group-hover:text-primary transition-colors' />
-              <p className='font-semibold'>QR Code</p>
-              <p className='text-sm text-muted-foreground mt-1'>
-                Scan QR dari aplikasi WhatsApp
-              </p>
-            </button>
-            <button
-              onClick={() => setPairingMethod('code')}
-              className='p-6 rounded-xl border-2 border-muted hover:border-primary hover:bg-primary/5 transition-all text-center group'
-            >
-              <Keyboard className='h-12 w-12 mx-auto mb-3 text-muted-foreground group-hover:text-primary transition-colors' />
-              <p className='font-semibold'>Pairing Code</p>
-              <p className='text-sm text-muted-foreground mt-1'>
-                Masukkan kode 8 digit di WhatsApp
-              </p>
-            </button>
-          </CardContent>
-        </Card>
-      )}
+      {status === 'idle' &&
+        !pairingMethod &&
+        phoneNumber.length >= 10 &&
+        !isResumingExistingDevice && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pilih Metode Pairing</CardTitle>
+              <CardDescription>
+                Cara menghubungkan device WhatsApp
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='grid grid-cols-2 gap-4'>
+              <button
+                onClick={() => setPairingMethod('qr')}
+                className='p-6 rounded-xl border-2 border-muted hover:border-primary hover:bg-primary/5 transition-all text-center group'
+              >
+                <QrCode className='h-12 w-12 mx-auto mb-3 text-muted-foreground group-hover:text-primary transition-colors' />
+                <p className='font-semibold'>QR Code</p>
+                <p className='text-sm text-muted-foreground mt-1'>
+                  Scan QR dari aplikasi WhatsApp
+                </p>
+              </button>
+              <button
+                onClick={() => setPairingMethod('code')}
+                className='p-6 rounded-xl border-2 border-muted hover:border-primary hover:bg-primary/5 transition-all text-center group'
+              >
+                <Keyboard className='h-12 w-12 mx-auto mb-3 text-muted-foreground group-hover:text-primary transition-colors' />
+                <p className='font-semibold'>Pairing Code</p>
+                <p className='text-sm text-muted-foreground mt-1'>
+                  Masukkan kode 8 digit di WhatsApp
+                </p>
+              </button>
+            </CardContent>
+          </Card>
+        )}
 
       {/* Confirm Connection */}
       {status === 'idle' && pairingMethod && (

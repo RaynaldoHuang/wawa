@@ -260,7 +260,39 @@ export const app = new Elysia({ prefix: '/api' })
         });
       }
 
-      const waDevice = waManager.getDevice(device.id);
+      let waDevice = waManager.getDevice(device.id);
+
+      if (
+        (!waDevice || waDevice.status === 'DISCONNECTED') &&
+        device.status !== 'BANNED'
+      ) {
+        try {
+          waDevice = await waManager.connect(device.id, {
+            phoneNumber: device.phoneNumber,
+            onConnected: async (phone) => {
+              await db.device.update({
+                where: { id: device.id },
+                data: {
+                  status: 'CONNECTED',
+                  phoneNumber: phone,
+                  connectedAt: new Date(),
+                },
+              });
+            },
+            onDisconnected: async () => {
+              await db.device.update({
+                where: { id: device.id },
+                data: { status: 'DISCONNECTED' },
+              });
+            },
+          });
+        } catch (error) {
+          console.error('[WA] failed to resume device session', {
+            deviceId: device.id,
+            error,
+          });
+        }
+      }
 
       return {
         id: device.id,

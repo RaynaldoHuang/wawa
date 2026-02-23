@@ -3,6 +3,7 @@
 import {
   Loader2,
   MoreVertical,
+  QrCode,
   Plus,
   RefreshCw,
   Smartphone,
@@ -87,7 +88,7 @@ export default function DevicesPage() {
         const error = await res.json();
         toast.error(error.error || 'Gagal menghapus device');
       }
-    } catch (error) {
+    } catch {
       toast.error('Terjadi kesalahan');
     } finally {
       setDeleting(false);
@@ -190,8 +191,8 @@ export default function DevicesPage() {
               key={device.id}
               className='group relative overflow-hidden transition-all hover:shadow-lg'
             >
-              <div className='absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity' />
-              <CardHeader className='pb-2'>
+              <div className='pointer-events-none absolute inset-0 bg-linear-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity' />
+              <CardHeader className='pb-0'>
                 <div className='flex items-start justify-between'>
                   <div className='flex items-center gap-3'>
                     <div className='flex size-12 items-center justify-center rounded-lg bg-linear-to-br from-blue-500/20 to-indigo-500/20 text-blue-500'>
@@ -206,11 +207,22 @@ export default function DevicesPage() {
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant='ghost' size='icon' className='h-8 w-8'>
+                      <Button variant='ghost' size='icon'>
                         <MoreVertical className='h-4 w-4' />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align='end'>
+                      {device.status !== 'CONNECTED' &&
+                        device.status !== 'BANNED' && (
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href={`/portals/devices/connect?deviceId=${device.id}&method=qr`}
+                            >
+                              <QrCode className='h-4 w-4' />
+                              Lanjutkan Pairing
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
                       <DropdownMenuItem
                         className='text-destructive focus:text-destructive'
                         onClick={() => {
@@ -218,7 +230,7 @@ export default function DevicesPage() {
                           setDeleteDialogOpen(true);
                         }}
                       >
-                        <Trash2 className='mr-2 h-4 w-4' />
+                        <Trash2 className='h-4 w-4' />
                         Hapus Device
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -226,7 +238,7 @@ export default function DevicesPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className='grid grid-cols-3 gap-4 mt-4 text-center'>
+                <div className='grid grid-cols-3 gap-4 text-center'>
                   <div className='p-2 rounded-lg bg-muted/50'>
                     <p className='text-2xl font-bold'>{device.totalBlast}</p>
                     <p className='text-xs text-muted-foreground'>Total</p>

@@ -61,9 +61,12 @@ export class WAManager {
       onDisconnected?: (reason: string) => void;
     } = {},
   ): Promise<WADevice> {
-    // Check if already connected
+    // Reuse active in-memory session when possible
     const existing = deviceStore.get(deviceId);
-    if (existing && existing.status === 'CONNECTED') {
+    if (
+      existing &&
+      (existing.status === 'CONNECTED' || existing.status === 'PAIRING')
+    ) {
       return existing;
     }
 
