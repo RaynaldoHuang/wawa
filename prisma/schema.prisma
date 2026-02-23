@@ -47,6 +47,7 @@ model User {
 
   // Relations
   devices     Device[]
+  campaigns   Campaign[]
   withdrawals Withdrawal[]
   blastJobs   BlastJob[]
   auditLogs   AuditLog[]
@@ -128,6 +129,7 @@ model BlastJob {
   id             String           @id @default(cuid())
   userId         String
   deviceId       String
+  campaignId     String?
   title          String?
   totalMessages  Int              @default(0)
   sentCount      Int              @default(0)
@@ -147,15 +149,43 @@ model BlastJob {
   completedAt    DateTime?
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  campaign       Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   recipients     BlastRecipient[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
   @@index([userId])
   @@index([deviceId])
+  @@index([campaignId])
   @@index([status])
   @@index([scheduleAt])
   @@map("blast_jobs")
+}
+
+model Campaign {
+  id             String     @id @default(cuid())
+  name           String
+  description    String?
+  message        String
+  recipients     Json
+  variablesData  Json?
+  ctaData        Json?
+  attachmentUrl  String?
+  attachmentType String?
+  campaignType   String     @default("MARKETING")
+  isActive       Boolean    @default(true)
+  createdById    String
+  deletedAt      DateTime?
+  lastBlastedAt  DateTime?
+  createdBy      User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  blastJobs      BlastJob[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("campaigns")
 }
 
 model BlastRecipient {

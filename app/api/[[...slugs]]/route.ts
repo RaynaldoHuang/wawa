@@ -92,6 +92,16 @@ function parseOptionalJson(value?: string): Record<string, unknown> | null {
   }
 }
 
+function parseRecipientsFromUnknown(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return parseRecipients(
+    value.filter((item): item is string => typeof item === 'string'),
+  );
+}
+
 function applyTemplateVariables(
   template: string,
   variables: Record<string, unknown>,
@@ -562,20 +572,23 @@ export const app = new Elysia({ prefix: '/api' })
   // ==================== BLASTS ====================
   .get(
     '/blasts',
-    async ({ user, query }) => {
+    async ({ query }) => {
       const page = Math.max(1, Number(query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
       const skip = (page - 1) * limit;
 
-      const where = { userId: user!.id };
-
       const [data, total] = await Promise.all([
         db.blastJob.findMany({
-          where,
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
           include: {
+            campaign: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
             device: {
               select: {
                 id: true,
@@ -585,7 +598,7 @@ export const app = new Elysia({ prefix: '/api' })
             },
           },
         }),
-        db.blastJob.count({ where }),
+        db.blastJob.count(),
       ]);
 
       return {
@@ -606,15 +619,21 @@ export const app = new Elysia({ prefix: '/api' })
   )
   .get(
     '/blasts/:id',
-    async ({ user, params, query }) => {
+    async ({ params, query }) => {
       const recipientsLimit = Math.min(
         500,
         Math.max(1, Number(query.recipientsLimit) || 100),
       );
 
       const blast = await db.blastJob.findFirst({
-        where: { id: params.id, userId: user!.id },
+        where: { id: params.id },
         include: {
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           device: {
             select: {
               id: true,
@@ -647,7 +666,53 @@ export const app = new Elysia({ prefix: '/api' })
   .post(
     '/blasts',
     async ({ user, body }) => {
-      const recipients = parseRecipients(body.recipients);
+      let recipients = parseRecipients(body.recipients || []);
+      let title = body.title;
+      let message = body.message || '';
+      let attachmentUrl = body.attachmentUrl;
+      let attachmentType = body.attachmentType;
+      let campaignType = body.campaignType || 'MARKETING';
+      let variablesData = parseOptionalJson(body.variablesData);
+      let ctaData = parseOptionalJson(body.ctaData);
+      let campaignId: string | null = null;
+
+      if (body.campaignId) {
+        const campaign = await db.campaign.findFirst({
+          where: {
+            id: body.campaignId,
+            deletedAt: null,
+            isActive: true,
+          },
+        });
+
+        if (!campaign) {
+          return new Response(JSON.stringify({ error: 'Campaign not found' }), {
+            status: 404,
+          });
+        }
+
+        recipients = parseRecipientsFromUnknown(campaign.recipients);
+        title = campaign.name;
+        message = campaign.message;
+        attachmentUrl = campaign.attachmentUrl || undefined;
+        attachmentType = campaign.attachmentType || undefined;
+        campaignType = campaign.campaignType;
+        variablesData = parseOptionalJson(
+          campaign.variablesData
+            ? JSON.stringify(campaign.variablesData)
+            : undefined,
+        );
+        ctaData = parseOptionalJson(
+          campaign.ctaData ? JSON.stringify(campaign.ctaData) : undefined,
+        );
+        campaignId = campaign.id;
+      }
+
+      if (!message.trim()) {
+        return new Response(JSON.stringify({ error: 'Message is required' }), {
+          status: 400,
+        });
+      }
 
       if (recipients.length === 0) {
         return new Response(
@@ -680,7 +745,7 @@ export const app = new Elysia({ prefix: '/api' })
       const quietHourEnd = quietHourEndSetting?.value || '08:00';
 
       const device = await db.device.findFirst({
-        where: { id: body.deviceId, userId: user!.id },
+        where: { id: body.deviceId },
         select: { id: true, status: true },
       });
 
@@ -739,8 +804,6 @@ export const app = new Elysia({ prefix: '/api' })
       }
 
       const templateData = parseOptionalJson(body.templateData);
-      const variablesData = parseOptionalJson(body.variablesData);
-      const ctaData = parseOptionalJson(body.ctaData);
       const recipientMetaDataRaw = parseOptionalJson(body.recipientMetaData);
       const recipientMetaData =
         (recipientMetaDataRaw as RecipientMetaMap | null) || {};
@@ -749,21 +812,29 @@ export const app = new Elysia({ prefix: '/api' })
         data: {
           userId: user!.id,
           deviceId: device.id,
-          title: body.title,
-          message: body.message,
+          campaignId,
+          title,
+          message,
           totalMessages: filteredRecipients.length,
           scheduleAt: parsedSchedule,
           timezone: body.timezone,
           templateName: body.templateName,
           templateData,
-          attachmentUrl: body.attachmentUrl,
-          attachmentType: body.attachmentType,
+          attachmentUrl,
+          attachmentType,
           ctaData,
           variablesData,
-          campaignType: body.campaignType || 'MARKETING',
+          campaignType,
           status: 'QUEUED',
         },
       });
+
+      if (campaignId) {
+        await db.campaign.update({
+          where: { id: campaignId },
+          data: { lastBlastedAt: new Date() },
+        });
+      }
 
       const recipientRows = filteredRecipients.map((phone) => ({
         recipientName:
@@ -789,7 +860,7 @@ export const app = new Elysia({ prefix: '/api' })
         blastJob.id,
         device.id,
         recipientData,
-        body.message,
+        message,
         parsedSchedule || undefined,
       );
 
@@ -805,10 +876,11 @@ export const app = new Elysia({ prefix: '/api' })
     {
       role: 'ADMIN',
       body: t.Object({
+        campaignId: t.Optional(t.String()),
         deviceId: t.String(),
         title: t.Optional(t.String()),
-        message: t.String({ minLength: 1 }),
-        recipients: t.Array(t.String(), { minItems: 1 }),
+        message: t.Optional(t.String({ minLength: 1 })),
+        recipients: t.Optional(t.Array(t.String(), { minItems: 1 })),
         scheduleAt: t.Optional(t.String()),
         timezone: t.Optional(t.String()),
         templateName: t.Optional(t.String()),
@@ -824,9 +896,9 @@ export const app = new Elysia({ prefix: '/api' })
   )
   .post(
     '/blasts/:id/cancel',
-    async ({ user, params }) => {
+    async ({ params }) => {
       const blast = await db.blastJob.findFirst({
-        where: { id: params.id, userId: user!.id },
+        where: { id: params.id },
         select: { id: true, status: true },
       });
 
@@ -861,7 +933,7 @@ export const app = new Elysia({ prefix: '/api' })
     '/blasts/:id/retry-failed',
     async ({ user, params }) => {
       const sourceJob = await db.blastJob.findFirst({
-        where: { id: params.id, userId: user!.id },
+        where: { id: params.id },
         include: {
           recipients: {
             where: { status: 'FAILED' },
@@ -901,6 +973,7 @@ export const app = new Elysia({ prefix: '/api' })
         data: {
           userId: user!.id,
           deviceId: sourceJob.device.id,
+          campaignId: sourceJob.campaignId,
           title: sourceJob.title,
           message: sourceJob.message,
           totalMessages: sourceJob.recipients.length,
@@ -1203,6 +1276,325 @@ export const app = new Elysia({ prefix: '/api' })
       }),
     },
   )
+  // ==================== ADMIN: CAMPAIGNS ====================
+  .get(
+    '/admin/campaigns',
+    async ({ query }) => {
+      const page = Number(query.page) || 1;
+      const limit = Number(query.limit) || 10;
+      const sortField = query.sortField || 'createdAt';
+      const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
+      const search = query.search || '';
+      const status = query.status || 'all';
+
+      const skip = (page - 1) * limit;
+
+      const where = {
+        AND: [
+          { deletedAt: null },
+          search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' as const } },
+                  {
+                    description: {
+                      contains: search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                ],
+              }
+            : {},
+          status === 'active'
+            ? { isActive: true }
+            : status === 'inactive'
+              ? { isActive: false }
+              : {},
+        ],
+      };
+
+      const [data, total] = await Promise.all([
+        db.campaign.findMany({
+          skip,
+          take: limit,
+          where,
+          orderBy: { [sortField]: sortOrder },
+          include: {
+            createdBy: {
+              select: { id: true, name: true, email: true },
+            },
+            _count: {
+              select: { blastJobs: true },
+            },
+          },
+        }),
+        db.campaign.count({ where }),
+      ]);
+
+      return {
+        data: data.map((campaign) => ({
+          ...campaign,
+          blastCount: campaign._count.blastJobs,
+          _count: undefined,
+        })),
+        totalPages: Math.ceil(total / limit),
+        total,
+      };
+    },
+    { role: 'ADMIN' },
+  )
+  .get(
+    '/admin/campaigns/options',
+    async () => {
+      const campaigns = await db.campaign.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          _count: {
+            select: { blastJobs: true },
+          },
+        },
+      });
+
+      return campaigns.map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        campaignType: campaign.campaignType,
+        recipientCount: parseRecipientsFromUnknown(campaign.recipients).length,
+        blastCount: campaign._count.blastJobs,
+        lastBlastedAt: campaign.lastBlastedAt,
+      }));
+    },
+    { role: 'ADMIN' },
+  )
+  .post(
+    '/admin/campaigns',
+    async ({ body, user }) => {
+      const recipients = parseRecipients(body.recipients);
+
+      if (recipients.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Recipient list cannot be empty' }),
+          { status: 400 },
+        );
+      }
+
+      if (recipients.length > MAX_RECIPIENTS_PER_BLAST) {
+        return new Response(
+          JSON.stringify({
+            error: `Maximum ${MAX_RECIPIENTS_PER_BLAST} recipients per campaign`,
+          }),
+          { status: 400 },
+        );
+      }
+
+      const variablesData = parseOptionalJson(body.variablesData);
+      const ctaData = parseOptionalJson(body.ctaData);
+
+      const campaign = await db.campaign.create({
+        data: {
+          name: body.name,
+          description: body.description,
+          message: body.message,
+          recipients,
+          variablesData,
+          ctaData,
+          attachmentUrl: body.attachmentUrl,
+          attachmentType: body.attachmentType,
+          campaignType: body.campaignType || 'MARKETING',
+          isActive: body.isActive ?? true,
+          createdById: user!.id,
+        },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'CREATE_CAMPAIGN',
+          target: campaign.id,
+          details: JSON.stringify({
+            name: campaign.name,
+            recipientCount: recipients.length,
+            campaignType: campaign.campaignType,
+          }),
+        },
+      });
+
+      return campaign;
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        name: t.String({ minLength: 1 }),
+        description: t.Optional(t.String()),
+        message: t.String({ minLength: 1 }),
+        recipients: t.Array(t.String(), { minItems: 1 }),
+        variablesData: t.Optional(t.String()),
+        ctaData: t.Optional(t.String()),
+        attachmentUrl: t.Optional(t.String()),
+        attachmentType: t.Optional(t.String()),
+        campaignType: t.Optional(t.String()),
+        isActive: t.Optional(t.Boolean()),
+      }),
+    },
+  )
+  .patch(
+    '/admin/campaigns/:id',
+    async ({ params, body, user }) => {
+      const campaign = await db.campaign.findFirst({
+        where: {
+          id: params.id,
+          deletedAt: null,
+        },
+        include: {
+          _count: {
+            select: { blastJobs: true },
+          },
+        },
+      });
+
+      if (!campaign) {
+        return new Response(JSON.stringify({ error: 'Campaign not found' }), {
+          status: 404,
+        });
+      }
+
+      const hasBlastHistory = campaign._count.blastJobs > 0;
+      const touchesSensitiveField =
+        body.message !== undefined ||
+        body.recipients !== undefined ||
+        body.variablesData !== undefined ||
+        body.ctaData !== undefined ||
+        body.attachmentUrl !== undefined ||
+        body.attachmentType !== undefined ||
+        body.campaignType !== undefined;
+
+      if (hasBlastHistory && touchesSensitiveField) {
+        return new Response(
+          JSON.stringify({
+            error:
+              'Campaign yang sudah dipakai blast hanya bisa diubah nama, deskripsi, dan status aktif.',
+          }),
+          { status: 400 },
+        );
+      }
+
+      const updateData: Record<string, unknown> = {};
+
+      if (body.name !== undefined) updateData.name = body.name;
+      if (body.description !== undefined)
+        updateData.description = body.description;
+      if (body.isActive !== undefined) updateData.isActive = body.isActive;
+
+      if (!hasBlastHistory) {
+        if (body.message !== undefined) updateData.message = body.message;
+        if (body.campaignType !== undefined)
+          updateData.campaignType = body.campaignType;
+        if (body.attachmentUrl !== undefined)
+          updateData.attachmentUrl = body.attachmentUrl;
+        if (body.attachmentType !== undefined)
+          updateData.attachmentType = body.attachmentType;
+        if (body.variablesData !== undefined)
+          updateData.variablesData = parseOptionalJson(body.variablesData);
+        if (body.ctaData !== undefined)
+          updateData.ctaData = parseOptionalJson(body.ctaData);
+        if (body.recipients !== undefined) {
+          const normalizedRecipients = parseRecipients(body.recipients);
+          if (normalizedRecipients.length === 0) {
+            return new Response(
+              JSON.stringify({ error: 'Recipient list cannot be empty' }),
+              { status: 400 },
+            );
+          }
+
+          if (normalizedRecipients.length > MAX_RECIPIENTS_PER_BLAST) {
+            return new Response(
+              JSON.stringify({
+                error: `Maximum ${MAX_RECIPIENTS_PER_BLAST} recipients per campaign`,
+              }),
+              { status: 400 },
+            );
+          }
+
+          updateData.recipients = normalizedRecipients;
+        }
+      }
+
+      const updated = await db.campaign.update({
+        where: { id: campaign.id },
+        data: updateData,
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'UPDATE_CAMPAIGN',
+          target: campaign.id,
+          details: JSON.stringify({
+            hasBlastHistory,
+            fields: Object.keys(updateData),
+          }),
+        },
+      });
+
+      return updated;
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        name: t.Optional(t.String({ minLength: 1 })),
+        description: t.Optional(t.String()),
+        message: t.Optional(t.String({ minLength: 1 })),
+        recipients: t.Optional(t.Array(t.String(), { minItems: 1 })),
+        variablesData: t.Optional(t.String()),
+        ctaData: t.Optional(t.String()),
+        attachmentUrl: t.Optional(t.String()),
+        attachmentType: t.Optional(t.String()),
+        campaignType: t.Optional(t.String()),
+        isActive: t.Optional(t.Boolean()),
+      }),
+    },
+  )
+  .delete(
+    '/admin/campaigns/:id',
+    async ({ params, user }) => {
+      const campaign = await db.campaign.findFirst({
+        where: {
+          id: params.id,
+          deletedAt: null,
+        },
+      });
+
+      if (!campaign) {
+        return new Response(JSON.stringify({ error: 'Campaign not found' }), {
+          status: 404,
+        });
+      }
+
+      await db.campaign.update({
+        where: { id: campaign.id },
+        data: {
+          isActive: false,
+          deletedAt: new Date(),
+        },
+      });
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'DELETE_CAMPAIGN',
+          target: campaign.id,
+          details: JSON.stringify({ name: campaign.name }),
+        },
+      });
+
+      return { success: true };
+    },
+    { role: 'ADMIN' },
+  )
   // ==================== ADMIN: USERS ====================
   .get(
     '/admin/users',
@@ -1274,7 +1666,7 @@ export const app = new Elysia({ prefix: '/api' })
 
       const newStatus = targetUser.status === 'BANNED' ? 'ACTIVE' : 'BANNED';
 
-      const updated = await db.user.update({
+      await db.user.update({
         where: { id: params.id },
         data: { status: newStatus },
       });

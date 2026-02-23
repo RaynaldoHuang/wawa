@@ -3,6 +3,7 @@
 import {
   ChevronDown,
   CreditCard,
+  FileText,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -56,6 +57,11 @@ const adminMenuItems = [
     title: 'Devices',
     icon: Smartphone,
     href: '/admin/devices',
+  },
+  {
+    title: 'Campaign',
+    icon: FileText,
+    href: '/admin/campaigns',
   },
   {
     title: 'Blast',
