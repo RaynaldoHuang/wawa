@@ -13,13 +13,13 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { getSignInErrorMessage } from '@/lib/auth-error';
+import { signIn } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
-import { signIn } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
@@ -62,7 +62,7 @@ export function LoginForm({
           router.refresh();
         },
         onError: (ctx) => {
-          toast.error(ctx.error.message);
+          toast.error(getSignInErrorMessage(ctx.error));
           setIsLoading(false);
         },
       },
@@ -75,13 +75,13 @@ export function LoginForm({
         <CardHeader className='text-center'>
           <CardTitle className='text-xl'>Selamat Datang!</CardTitle>
           <CardDescription>
-            Login dengan akun Google atau Apple Anda
+            Masuk ke akun Anda untuk melanjutkan
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)}>
             <FieldGroup>
-              <Field>
+              {/* <Field>
                 <Button variant='outline' type='button'>
                   <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>
                     <path
@@ -91,10 +91,10 @@ export function LoginForm({
                   </svg>
                   Masuk dengan Google
                 </Button>
-              </Field>
-              <FieldSeparator className='*:data-[slot=field-separator-content]:bg-card'>
+              </Field> */}
+              {/* <FieldSeparator className='*:data-[slot=field-separator-content]:bg-card'>
                 Atau masuk dengan email
-              </FieldSeparator>
+              </FieldSeparator> */}
               <Field>
                 <FieldLabel htmlFor='email'>Email</FieldLabel>
                 <Input
@@ -125,7 +125,7 @@ export function LoginForm({
                 <Button type='submit' loading={isLoading}>
                   Masuk
                 </Button>
-                <FieldDescription className='text-center'>
+                <FieldDescription className='text-center mt-3!'>
                   Belum punya akun? <Link href='/auth/register'>Daftar</Link>
                 </FieldDescription>
               </Field>

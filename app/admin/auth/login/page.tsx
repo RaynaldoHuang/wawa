@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { signIn } from '@/lib/auth-client';
+import { getSignInErrorMessage } from '@/lib/auth-error';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -53,7 +54,7 @@ export default function AdminLoginPage() {
           router.refresh();
         },
         onError: (ctx) => {
-          toast.error(ctx.error.message);
+          toast.error(getSignInErrorMessage(ctx.error));
           setIsLoading(false);
         },
       },

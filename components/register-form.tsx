@@ -1,9 +1,6 @@
 'use client';
 
-import { z } from 'zod';
-import { signUp } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
-import * as React from 'react';
 import {
   Card,
   CardContent,
@@ -16,15 +13,17 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from '@/components/ui/field';
-import { SubmitHandler, useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Input } from './ui/input';
-import Link from 'next/link';
-import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { signUp } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
+import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import * as React from 'react';
+import { SubmitHandler, useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { z } from 'zod';
+import { Input } from './ui/input';
 
 const formSchema = z
   .object({
@@ -82,13 +81,13 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
         <CardHeader className='text-center'>
           <CardTitle className='text-xl'>Selamat Datang!</CardTitle>
           <CardDescription>
-            Daftar dengan akun Google atau Apple Anda
+            Daftar untuk membuat akun baru dan mulai menggunakan layanan kami
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)}>
             <FieldGroup>
-              <Field>
+              {/* <Field>
                 <Button variant='outline' type='button'>
                   <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>
                     <path
@@ -98,10 +97,10 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
                   </svg>
                   Daftar dengan Google
                 </Button>
-              </Field>
-              <FieldSeparator className='*:data-[slot=field-separator-content]:bg-card'>
+              </Field> */}
+              {/* <FieldSeparator className='*:data-[slot=field-separator-content]:bg-card'>
                 Atau masuk dengan email
-              </FieldSeparator>
+              </FieldSeparator> */}
               <Field>
                 <FieldLabel htmlFor='name'>Nama</FieldLabel>
                 <Input
@@ -144,7 +143,7 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
                 <Button type='submit' loading={isLoading}>
                   Daftar
                 </Button>
-                <FieldDescription className='text-center'>
+                <FieldDescription className='text-center mt-3!'>
                   Sudah punya akun? <Link href='/auth/login'>Masuk</Link>
                 </FieldDescription>
               </Field>

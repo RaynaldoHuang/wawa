@@ -2,11 +2,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo from '@/public/webp/logo.webp';
+import { Separator } from '../ui/separator';
 
 export default function FooterSection() {
   return (
     <>
-      <section>
+      <footer className='border-t border-t-muted'>
         <div className='relative overflow-hidden bg-[#F9FBF9]'>
           {/* GRADIENT ATAS KIRI */}
           <div
@@ -89,7 +90,7 @@ export default function FooterSection() {
             </div>
 
             {/* DIVIDER */}
-            <div className='mt-16 border-t border-[#0A2E1E]/50'></div>
+            <Separator className='my-16 border-[#0A2E1E]/50' />
 
             {/* COPYRIGHT */}
             <div className='mt-6 flex justify-center'>
@@ -99,7 +100,7 @@ export default function FooterSection() {
             </div>
           </div>
         </div>
-      </section>
+      </footer>
     </>
   );
 }
