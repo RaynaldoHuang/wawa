@@ -35,6 +35,7 @@ export default function ConnectDevicePage() {
   const [pairingCode, setPairingCode] = React.useState<string | null>(null);
   const [deviceId, setDeviceId] = React.useState<string | null>(null);
   const pollRef = React.useRef<NodeJS.Timeout | null>(null);
+  const lastResumeKeyRef = React.useRef<string | null>(null);
 
   const startPolling = React.useCallback(
     (id: string, method: PairingMethod) => {
@@ -44,6 +45,7 @@ export default function ConnectDevicePage() {
         try {
           const res = await fetch(`/api/devices/${id}/status`, {
             credentials: 'include',
+            cache: 'no-store',
           });
           const data = await res.json();
 
@@ -143,9 +145,13 @@ export default function ConnectDevicePage() {
       setPairingCode(null);
 
       try {
-        const res = await fetch(`/api/devices/${id}/status`, {
-          credentials: 'include',
-        });
+        const res = await fetch(
+          `/api/devices/${id}/status?resume=1&method=${method}`,
+          {
+            credentials: 'include',
+            cache: 'no-store',
+          },
+        );
         const data = await res.json();
 
         if (!res.ok) {
@@ -187,16 +193,25 @@ export default function ConnectDevicePage() {
     [router, startPolling],
   );
 
+  const resumeDeviceId = searchParams.get('deviceId');
+  const resumeMethodParam = searchParams.get('method');
+
   React.useEffect(() => {
-    const id = searchParams.get('deviceId');
-    const methodParam = searchParams.get('method');
     const method: PairingMethod =
-      methodParam === 'code' ? 'code' : methodParam === 'qr' ? 'qr' : null;
+      resumeMethodParam === 'code'
+        ? 'code'
+        : resumeMethodParam === 'qr'
+          ? 'qr'
+          : null;
 
-    if (!id || !method) return;
+    if (!resumeDeviceId || !method) return;
 
-    resumePairing(id, method);
-  }, [resumePairing, searchParams]);
+    const resumeKey = `${resumeDeviceId}:${method}`;
+    if (lastResumeKeyRef.current === resumeKey) return;
+
+    lastResumeKeyRef.current = resumeKey;
+    resumePairing(resumeDeviceId, method);
+  }, [resumeDeviceId, resumeMethodParam, resumePairing]);
 
   React.useEffect(() => {
     return () => {

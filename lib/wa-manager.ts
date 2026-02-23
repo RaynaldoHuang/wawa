@@ -27,6 +27,7 @@ export interface WADevice {
 
 // Store for active connections
 const deviceStore = new Map<string, WADevice>();
+const connectingStore = new Map<string, Promise<WADevice>>();
 
 export class WAManager {
   private static instance: WAManager;
@@ -61,6 +62,11 @@ export class WAManager {
       onDisconnected?: (reason: string) => void;
     } = {},
   ): Promise<WADevice> {
+    const existingConnect = connectingStore.get(deviceId);
+    if (existingConnect) {
+      return existingConnect;
+    }
+
     // Reuse active in-memory session when possible
     const existing = deviceStore.get(deviceId);
     if (
@@ -70,6 +76,36 @@ export class WAManager {
       return existing;
     }
 
+    if (existing?.status === 'DISCONNECTED') {
+      try {
+        existing.socket.end(undefined);
+      } catch {
+        // Ignore socket end errors
+      }
+      deviceStore.delete(deviceId);
+    }
+
+    const connectPromise = this.createConnection(deviceId, options);
+    connectingStore.set(deviceId, connectPromise);
+
+    try {
+      return await connectPromise;
+    } finally {
+      connectingStore.delete(deviceId);
+    }
+  }
+
+  private async createConnection(
+    deviceId: string,
+    options: {
+      phoneNumber?: string;
+      usePairingCode?: boolean;
+      onQR?: (qr: string) => void;
+      onPairingCode?: (code: string) => void;
+      onConnected?: (phoneNumber: string) => void;
+      onDisconnected?: (reason: string) => void;
+    } = {},
+  ): Promise<WADevice> {
     const sessionPath = this.getSessionPath(deviceId);
     await mkdir(sessionPath, { recursive: true });
 

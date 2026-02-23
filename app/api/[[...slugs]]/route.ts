@@ -250,7 +250,7 @@ export const app = new Elysia({ prefix: '/api' })
   )
   .get(
     '/devices/:id/status',
-    async ({ user, params }) => {
+    async ({ user, params, query }) => {
       const device = await db.device.findFirst({
         where: { id: params.id, userId: user!.id },
       });
@@ -261,14 +261,54 @@ export const app = new Elysia({ prefix: '/api' })
       }
 
       let waDevice = waManager.getDevice(device.id);
+      const queryParams = query as Record<string, string | undefined>;
+      const isResumeRequest =
+        queryParams.resume === '1' || queryParams.resume === 'true';
+      const resumeMethod = queryParams.method === 'code' ? 'code' : 'qr';
+      let resumeQr: string | undefined;
+      let resumePairingCode: string | undefined;
 
       if (
         (!waDevice || waDevice.status === 'DISCONNECTED') &&
         device.status !== 'BANNED'
       ) {
         try {
+          let settleResume:
+            | ((value: { qr?: string; pairingCode?: string }) => void)
+            | undefined;
+          let resumeSettled = false;
+          const settleResumeOnce = (value: {
+            qr?: string;
+            pairingCode?: string;
+          }) => {
+            if (!resumeSettled && settleResume) {
+              resumeSettled = true;
+              settleResume(value);
+            }
+          };
+
+          const resumePromise = isResumeRequest
+            ? new Promise<{ qr?: string; pairingCode?: string }>((resolve) => {
+                settleResume = resolve;
+                setTimeout(() => settleResumeOnce({}), 8000);
+              })
+            : null;
+
           waDevice = await waManager.connect(device.id, {
             phoneNumber: device.phoneNumber,
+            usePairingCode: isResumeRequest && resumeMethod === 'code',
+            onQR: (qr) => {
+              resumeQr = qr;
+              if (isResumeRequest && resumeMethod === 'qr') {
+                settleResumeOnce({ qr });
+              }
+            },
+            onPairingCode: (code) => {
+              resumePairingCode = code;
+              if (isResumeRequest && resumeMethod === 'code') {
+                settleResumeOnce({ pairingCode: code });
+              }
+            },
             onConnected: async (phone) => {
               await db.device.update({
                 where: { id: device.id },
@@ -286,6 +326,100 @@ export const app = new Elysia({ prefix: '/api' })
               });
             },
           });
+
+          if (isResumeRequest) {
+            if (waDevice?.qr && resumeMethod === 'qr') {
+              settleResumeOnce({ qr: waDevice.qr });
+            }
+            if (waDevice?.pairingCode && resumeMethod === 'code') {
+              settleResumeOnce({ pairingCode: waDevice.pairingCode });
+            }
+
+            const resumeResult = await resumePromise;
+            if (resumeResult?.qr) {
+              resumeQr = resumeResult.qr;
+            }
+            if (resumeResult?.pairingCode) {
+              resumePairingCode = resumeResult.pairingCode;
+            }
+
+            const stillNoPairingArtifact =
+              resumeMethod === 'qr'
+                ? !(waDevice?.qr || resumeQr)
+                : !(waDevice?.pairingCode || resumePairingCode);
+
+            if (stillNoPairingArtifact && waDevice?.status !== 'CONNECTED') {
+              console.warn('[WA] resume fallback: recreate session', {
+                deviceId: device.id,
+                resumeMethod,
+              });
+
+              await waManager.disconnect(device.id, true);
+
+              let settleFallback:
+                | ((value: { qr?: string; pairingCode?: string }) => void)
+                | undefined;
+              let fallbackSettled = false;
+              const settleFallbackOnce = (value: {
+                qr?: string;
+                pairingCode?: string;
+              }) => {
+                if (!fallbackSettled && settleFallback) {
+                  fallbackSettled = true;
+                  settleFallback(value);
+                }
+              };
+
+              const fallbackPromise = new Promise<{
+                qr?: string;
+                pairingCode?: string;
+              }>((resolve) => {
+                settleFallback = resolve;
+                setTimeout(() => settleFallbackOnce({}), 10000);
+              });
+
+              waDevice = await waManager.connect(device.id, {
+                phoneNumber: device.phoneNumber,
+                usePairingCode: resumeMethod === 'code',
+                onQR: (qr) => {
+                  resumeQr = qr;
+                  if (resumeMethod === 'qr') {
+                    settleFallbackOnce({ qr });
+                  }
+                },
+                onPairingCode: (code) => {
+                  resumePairingCode = code;
+                  if (resumeMethod === 'code') {
+                    settleFallbackOnce({ pairingCode: code });
+                  }
+                },
+                onConnected: async (phone) => {
+                  await db.device.update({
+                    where: { id: device.id },
+                    data: {
+                      status: 'CONNECTED',
+                      phoneNumber: phone,
+                      connectedAt: new Date(),
+                    },
+                  });
+                },
+                onDisconnected: async () => {
+                  await db.device.update({
+                    where: { id: device.id },
+                    data: { status: 'DISCONNECTED' },
+                  });
+                },
+              });
+
+              const fallbackResult = await fallbackPromise;
+              if (fallbackResult?.qr) {
+                resumeQr = fallbackResult.qr;
+              }
+              if (fallbackResult?.pairingCode) {
+                resumePairingCode = fallbackResult.pairingCode;
+              }
+            }
+          }
         } catch (error) {
           console.error('[WA] failed to resume device session', {
             deviceId: device.id,
@@ -298,8 +432,8 @@ export const app = new Elysia({ prefix: '/api' })
         id: device.id,
         phoneNumber: device.phoneNumber,
         status: waDevice?.status || device.status,
-        qr: waDevice?.qr,
-        pairingCode: waDevice?.pairingCode,
+        qr: waDevice?.qr || resumeQr,
+        pairingCode: waDevice?.pairingCode || resumePairingCode,
       };
     },
     { auth: true },
