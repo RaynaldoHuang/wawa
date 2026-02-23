@@ -80,7 +80,7 @@ export default function AdminLoginPage() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder='admin@ciptacode.com' {...field} />
+                    <Input placeholder='Masukkan email Anda' {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

@@ -21,6 +21,68 @@ export interface BlastJobData {
   recipientId: string;
 }
 
+function applyTemplateVariables(
+  template: string,
+  variables: Record<string, unknown>,
+): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = variables[key];
+    if (value === undefined || value === null) return '';
+    return String(value);
+  });
+}
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+async function markJobAsProcessing(jobId: string): Promise<void> {
+  await db.blastJob.updateMany({
+    where: {
+      id: jobId,
+      status: 'QUEUED',
+    },
+    data: {
+      status: 'PROCESSING',
+      startedAt: new Date(),
+    },
+  });
+}
+
+async function finalizeBlastJob(jobId: string): Promise<void> {
+  const blastJob = await db.blastJob.findUnique({
+    where: { id: jobId },
+    select: {
+      totalMessages: true,
+      sentCount: true,
+      failedCount: true,
+      status: true,
+    },
+  });
+
+  if (!blastJob) return;
+
+  if (blastJob.status === 'CANCELLED' || blastJob.status === 'COMPLETED') {
+    return;
+  }
+
+  const processedCount = blastJob.sentCount + blastJob.failedCount;
+  if (processedCount < blastJob.totalMessages) {
+    return;
+  }
+
+  await db.blastJob.update({
+    where: { id: jobId },
+    data: {
+      status: blastJob.failedCount > 0 ? 'FAILED' : 'COMPLETED',
+      completedAt: new Date(),
+    },
+  });
+}
+
 // Create the blast queue
 export const blastQueue = new Queue<BlastJobData>(BLAST_QUEUE, {
   connection: redisConnection,
@@ -41,11 +103,87 @@ export const blastWorker = new Worker<BlastJobData>(
   async (job: Job<BlastJobData>) => {
     const { deviceId, recipientPhone, message, recipientId, jobId } = job.data;
 
+    await markJobAsProcessing(jobId);
+
+    const blastJob = await db.blastJob.findUnique({
+      where: { id: jobId },
+      select: { status: true },
+    });
+
+    if (!blastJob || blastJob.status === 'CANCELLED') {
+      await db.$transaction([
+        db.blastRecipient.update({
+          where: { id: recipientId },
+          data: {
+            status: 'FAILED',
+            errorMsg: 'BLAST_CANCELLED',
+          },
+        }),
+        db.blastJob.update({
+          where: { id: jobId },
+          data: { failedCount: { increment: 1 } },
+        }),
+      ]);
+      await finalizeBlastJob(jobId);
+      return { success: false, error: 'BLAST_CANCELLED' };
+    }
+
+    const [recipient, blastJobMeta] = await Promise.all([
+      db.blastRecipient.findUnique({
+        where: { id: recipientId },
+        select: {
+          recipientName: true,
+          metaData: true,
+        },
+      }),
+      db.blastJob.findUnique({
+        where: { id: jobId },
+        select: {
+          attachmentUrl: true,
+          attachmentType: true,
+          ctaData: true,
+          variablesData: true,
+        },
+      }),
+    ]);
+
+    const globalVariables = toObject(blastJobMeta?.variablesData);
+    const recipientVariables = toObject(recipient?.metaData);
+    const variables = {
+      ...globalVariables,
+      ...recipientVariables,
+      phone: recipientPhone,
+      recipientPhone,
+      name:
+        (recipientVariables.name as string | undefined) ||
+        recipient?.recipientName ||
+        '',
+    };
+
+    const renderedMessage = applyTemplateVariables(message, variables);
+    const ctaData = toObject(blastJobMeta?.ctaData);
+
     // Send the message
     const result = await waManager.sendMessage(
       deviceId,
       recipientPhone,
-      message,
+      renderedMessage,
+      {
+        attachmentUrl: blastJobMeta?.attachmentUrl || undefined,
+        attachmentType:
+          blastJobMeta?.attachmentType === 'video' ||
+          blastJobMeta?.attachmentType === 'document' ||
+          blastJobMeta?.attachmentType === 'image'
+            ? blastJobMeta.attachmentType
+            : undefined,
+        ctaLabel:
+          typeof ctaData.label === 'string'
+            ? ctaData.label
+            : typeof ctaData.text === 'string'
+              ? ctaData.text
+              : undefined,
+        ctaUrl: typeof ctaData.url === 'string' ? ctaData.url : undefined,
+      },
     );
 
     // Update recipient status
@@ -53,6 +191,7 @@ export const blastWorker = new Worker<BlastJobData>(
       where: { id: recipientId },
       data: {
         status: result.success ? 'SENT' : 'FAILED',
+        renderedMessage,
         sentAt: result.success ? new Date() : null,
         errorMsg: result.error || null,
       },
@@ -87,6 +226,8 @@ export const blastWorker = new Worker<BlastJobData>(
           data: { walletBalance: { increment: 25 } },
         });
       }
+
+      await finalizeBlastJob(jobId);
     } else {
       await db.$transaction([
         db.blastJob.update({
@@ -101,6 +242,8 @@ export const blastWorker = new Worker<BlastJobData>(
           },
         }),
       ]);
+
+      await finalizeBlastJob(jobId);
 
       throw new Error(result.error);
     }
@@ -131,7 +274,13 @@ export async function enqueueBlastJob(
   deviceId: string,
   recipients: { id: string; phone: string }[],
   message: string,
+  scheduledAt?: Date,
 ): Promise<void> {
+  const nowMs = Date.now();
+  const scheduledDelayMs = scheduledAt
+    ? Math.max(0, scheduledAt.getTime() - nowMs)
+    : 0;
+
   const jobs = recipients.map((recipient, index) => ({
     name: `blast-${blastJobId}-${index}`,
     data: {
@@ -142,18 +291,12 @@ export async function enqueueBlastJob(
       recipientId: recipient.id,
     } as BlastJobData,
     opts: {
-      delay: index * waManager.getMessageDelay(), // Stagger messages
+      delay:
+        scheduledDelayMs +
+        index * waManager.getMessageDelay() +
+        Math.floor(Math.random() * 1000),
     },
   }));
 
   await blastQueue.addBulk(jobs);
-
-  // Update job status to processing
-  await db.blastJob.update({
-    where: { id: blastJobId },
-    data: {
-      status: 'PROCESSING',
-      startedAt: new Date(),
-    },
-  });
 }

@@ -3,8 +3,107 @@ import { hashPassword } from 'better-auth/crypto';
 import { randomUUID } from 'crypto';
 
 import { auth } from '@/lib/auth';
+import { enqueueBlastJob } from '@/lib/blast-queue';
 import db from '@/lib/db';
 import { waManager } from '@/lib/wa-manager';
+
+const MAX_RECIPIENTS_PER_BLAST = 5000;
+
+function normalizePhoneNumber(input: string): string {
+  const digits = input.replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('0')) {
+    return `62${digits.slice(1)}`;
+  }
+
+  return digits;
+}
+
+function parseRecipients(recipients: string[]): string[] {
+  const normalized = recipients
+    .map(normalizePhoneNumber)
+    .filter((phone) => phone.length >= 10);
+
+  return [...new Set(normalized)];
+}
+
+type RecipientMetaMap = Record<
+  string,
+  {
+    name?: string;
+    [key: string]: unknown;
+  }
+>;
+
+function parseHHMM(value: string, fallback: { hour: number; minute: number }) {
+  const [hourText, minuteText] = value.split(':');
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (
+    Number.isNaN(hour) ||
+    Number.isNaN(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return fallback;
+  }
+
+  return { hour, minute };
+}
+
+function isInQuietHours(
+  currentDate: Date,
+  startTime: string,
+  endTime: string,
+): boolean {
+  const start = parseHHMM(startTime, { hour: 21, minute: 0 });
+  const end = parseHHMM(endTime, { hour: 8, minute: 0 });
+
+  const currentMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
+  const startMinutes = start.hour * 60 + start.minute;
+  const endMinutes = end.hour * 60 + end.minute;
+
+  if (startMinutes === endMinutes) {
+    return false;
+  }
+
+  if (startMinutes < endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+
+  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+}
+
+function parseOptionalJson(value?: string): Record<string, unknown> | null {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function applyTemplateVariables(
+  template: string,
+  variables: Record<string, unknown>,
+): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = variables[key];
+    if (value === undefined || value === null) {
+      return '';
+    }
+    return String(value);
+  });
+}
 
 export const app = new Elysia({ prefix: '/api' })
   .derive(async ({ request }) => {
@@ -138,7 +237,7 @@ export const app = new Elysia({ prefix: '/api' })
       });
       return devices;
     },
-    { auth: true },
+    { role: 'ADMIN' },
   )
   .post(
     '/devices/connect',
@@ -241,7 +340,7 @@ export const app = new Elysia({ prefix: '/api' })
       };
     },
     {
-      auth: true,
+      role: 'ADMIN',
       body: t.Object({
         phoneNumber: t.String(),
         usePairingCode: t.Optional(t.Boolean()),
@@ -436,7 +535,7 @@ export const app = new Elysia({ prefix: '/api' })
         pairingCode: waDevice?.pairingCode || resumePairingCode,
       };
     },
-    { auth: true },
+    { role: 'ADMIN' },
   )
   .delete(
     '/devices/:id',
@@ -458,7 +557,522 @@ export const app = new Elysia({ prefix: '/api' })
 
       return { success: true };
     },
-    { auth: true },
+    { role: 'ADMIN' },
+  )
+  // ==================== BLASTS ====================
+  .get(
+    '/blasts',
+    async ({ user, query }) => {
+      const page = Math.max(1, Number(query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+      const skip = (page - 1) * limit;
+
+      const where = { userId: user!.id };
+
+      const [data, total] = await Promise.all([
+        db.blastJob.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            device: {
+              select: {
+                id: true,
+                phoneNumber: true,
+                status: true,
+              },
+            },
+          },
+        }),
+        db.blastJob.count({ where }),
+      ]);
+
+      return {
+        data,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      };
+    },
+    {
+      role: 'ADMIN',
+      query: t.Object({
+        page: t.Optional(t.String()),
+        limit: t.Optional(t.String()),
+      }),
+    },
+  )
+  .get(
+    '/blasts/:id',
+    async ({ user, params, query }) => {
+      const recipientsLimit = Math.min(
+        500,
+        Math.max(1, Number(query.recipientsLimit) || 100),
+      );
+
+      const blast = await db.blastJob.findFirst({
+        where: { id: params.id, userId: user!.id },
+        include: {
+          device: {
+            select: {
+              id: true,
+              phoneNumber: true,
+              status: true,
+            },
+          },
+          recipients: {
+            orderBy: { createdAt: 'asc' },
+            take: recipientsLimit,
+          },
+        },
+      });
+
+      if (!blast) {
+        return new Response(JSON.stringify({ error: 'Blast job not found' }), {
+          status: 404,
+        });
+      }
+
+      return blast;
+    },
+    {
+      role: 'ADMIN',
+      query: t.Object({
+        recipientsLimit: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    '/blasts',
+    async ({ user, body }) => {
+      const recipients = parseRecipients(body.recipients);
+
+      if (recipients.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Recipient list cannot be empty' }),
+          { status: 400 },
+        );
+      }
+
+      if (recipients.length > MAX_RECIPIENTS_PER_BLAST) {
+        return new Response(
+          JSON.stringify({
+            error: `Maximum ${MAX_RECIPIENTS_PER_BLAST} recipients per blast`,
+          }),
+          { status: 400 },
+        );
+      }
+
+      const [quietHourStartSetting, quietHourEndSetting] = await Promise.all([
+        db.globalSetting.findUnique({
+          where: { key: 'BLAST_QUIET_HOURS_START' },
+          select: { value: true },
+        }),
+        db.globalSetting.findUnique({
+          where: { key: 'BLAST_QUIET_HOURS_END' },
+          select: { value: true },
+        }),
+      ]);
+
+      const quietHourStart = quietHourStartSetting?.value || '21:00';
+      const quietHourEnd = quietHourEndSetting?.value || '08:00';
+
+      const device = await db.device.findFirst({
+        where: { id: body.deviceId, userId: user!.id },
+        select: { id: true, status: true },
+      });
+
+      if (!device) {
+        return new Response(JSON.stringify({ error: 'Device not found' }), {
+          status: 404,
+        });
+      }
+
+      if (device.status !== 'CONNECTED') {
+        return new Response(
+          JSON.stringify({ error: 'Device is not connected' }),
+          { status: 400 },
+        );
+      }
+
+      const parsedSchedule = body.scheduleAt ? new Date(body.scheduleAt) : null;
+      if (parsedSchedule && Number.isNaN(parsedSchedule.getTime())) {
+        return new Response(JSON.stringify({ error: 'Invalid scheduleAt' }), {
+          status: 400,
+        });
+      }
+
+      if (
+        !parsedSchedule &&
+        isInQuietHours(new Date(), quietHourStart, quietHourEnd)
+      ) {
+        return new Response(
+          JSON.stringify({
+            error: 'Saat ini masuk quiet hours. Silakan jadwalkan campaign.',
+          }),
+          { status: 400 },
+        );
+      }
+
+      const suppressed = await db.suppressionList.findMany({
+        where: {
+          OR: [{ userId: user!.id }, { userId: null }],
+          phone: { in: recipients },
+        },
+        select: { phone: true },
+      });
+
+      const suppressedPhones = new Set(suppressed.map((item) => item.phone));
+      const filteredRecipients = recipients.filter(
+        (phone) => !suppressedPhones.has(phone),
+      );
+
+      if (filteredRecipients.length === 0) {
+        return new Response(
+          JSON.stringify({
+            error: 'Semua recipient masuk suppression list',
+          }),
+          { status: 400 },
+        );
+      }
+
+      const templateData = parseOptionalJson(body.templateData);
+      const variablesData = parseOptionalJson(body.variablesData);
+      const ctaData = parseOptionalJson(body.ctaData);
+      const recipientMetaDataRaw = parseOptionalJson(body.recipientMetaData);
+      const recipientMetaData =
+        (recipientMetaDataRaw as RecipientMetaMap | null) || {};
+
+      const blastJob = await db.blastJob.create({
+        data: {
+          userId: user!.id,
+          deviceId: device.id,
+          title: body.title,
+          message: body.message,
+          totalMessages: filteredRecipients.length,
+          scheduleAt: parsedSchedule,
+          timezone: body.timezone,
+          templateName: body.templateName,
+          templateData,
+          attachmentUrl: body.attachmentUrl,
+          attachmentType: body.attachmentType,
+          ctaData,
+          variablesData,
+          campaignType: body.campaignType || 'MARKETING',
+          status: 'QUEUED',
+        },
+      });
+
+      const recipientRows = filteredRecipients.map((phone) => ({
+        recipientName:
+          typeof recipientMetaData[phone]?.name === 'string'
+            ? recipientMetaData[phone].name
+            : null,
+        metaData: recipientMetaData[phone] || null,
+        jobId: blastJob.id,
+        phone,
+      }));
+
+      await db.blastRecipient.createMany({
+        data: recipientRows,
+      });
+
+      const recipientData = await db.blastRecipient.findMany({
+        where: { jobId: blastJob.id },
+        select: { id: true, phone: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      await enqueueBlastJob(
+        blastJob.id,
+        device.id,
+        recipientData,
+        body.message,
+        parsedSchedule || undefined,
+      );
+
+      return {
+        id: blastJob.id,
+        status: 'QUEUED',
+        totalMessages: filteredRecipients.length,
+        filteredSuppressed: recipients.length - filteredRecipients.length,
+        scheduled: Boolean(parsedSchedule),
+        scheduleAt: parsedSchedule?.toISOString() || null,
+      };
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        deviceId: t.String(),
+        title: t.Optional(t.String()),
+        message: t.String({ minLength: 1 }),
+        recipients: t.Array(t.String(), { minItems: 1 }),
+        scheduleAt: t.Optional(t.String()),
+        timezone: t.Optional(t.String()),
+        templateName: t.Optional(t.String()),
+        templateData: t.Optional(t.String()),
+        attachmentUrl: t.Optional(t.String()),
+        attachmentType: t.Optional(t.String()),
+        ctaData: t.Optional(t.String()),
+        variablesData: t.Optional(t.String()),
+        recipientMetaData: t.Optional(t.String()),
+        campaignType: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    '/blasts/:id/cancel',
+    async ({ user, params }) => {
+      const blast = await db.blastJob.findFirst({
+        where: { id: params.id, userId: user!.id },
+        select: { id: true, status: true },
+      });
+
+      if (!blast) {
+        return new Response(JSON.stringify({ error: 'Blast job not found' }), {
+          status: 404,
+        });
+      }
+
+      if (blast.status === 'COMPLETED' || blast.status === 'FAILED') {
+        return new Response(
+          JSON.stringify({
+            error: 'Blast job already finished and cannot be cancelled',
+          }),
+          { status: 400 },
+        );
+      }
+
+      await db.blastJob.update({
+        where: { id: blast.id },
+        data: {
+          status: 'CANCELLED',
+          completedAt: new Date(),
+        },
+      });
+
+      return { success: true };
+    },
+    { role: 'ADMIN' },
+  )
+  .post(
+    '/blasts/:id/retry-failed',
+    async ({ user, params }) => {
+      const sourceJob = await db.blastJob.findFirst({
+        where: { id: params.id, userId: user!.id },
+        include: {
+          recipients: {
+            where: { status: 'FAILED' },
+            select: {
+              phone: true,
+              recipientName: true,
+              metaData: true,
+            },
+          },
+          device: {
+            select: { id: true, status: true },
+          },
+        },
+      });
+
+      if (!sourceJob) {
+        return new Response(JSON.stringify({ error: 'Blast job not found' }), {
+          status: 404,
+        });
+      }
+
+      if (sourceJob.recipients.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'No failed recipients to retry' }),
+          { status: 400 },
+        );
+      }
+
+      if (sourceJob.device.status !== 'CONNECTED') {
+        return new Response(
+          JSON.stringify({ error: 'Device is not connected' }),
+          { status: 400 },
+        );
+      }
+
+      const retryJob = await db.blastJob.create({
+        data: {
+          userId: user!.id,
+          deviceId: sourceJob.device.id,
+          title: sourceJob.title,
+          message: sourceJob.message,
+          totalMessages: sourceJob.recipients.length,
+          timezone: sourceJob.timezone,
+          templateName: sourceJob.templateName,
+          templateData: sourceJob.templateData,
+          attachmentUrl: sourceJob.attachmentUrl,
+          attachmentType: sourceJob.attachmentType,
+          ctaData: sourceJob.ctaData,
+          variablesData: sourceJob.variablesData,
+          campaignType: sourceJob.campaignType,
+          status: 'QUEUED',
+        },
+      });
+
+      await db.blastRecipient.createMany({
+        data: sourceJob.recipients.map((recipient) => ({
+          jobId: retryJob.id,
+          phone: recipient.phone,
+          recipientName: recipient.recipientName,
+          metaData: recipient.metaData,
+        })),
+      });
+
+      const retryRecipients = await db.blastRecipient.findMany({
+        where: { jobId: retryJob.id },
+        select: { id: true, phone: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      await enqueueBlastJob(
+        retryJob.id,
+        sourceJob.device.id,
+        retryRecipients,
+        sourceJob.message,
+      );
+
+      return {
+        id: retryJob.id,
+        sourceJobId: sourceJob.id,
+        totalMessages: retryRecipients.length,
+        status: 'QUEUED',
+      };
+    },
+    { role: 'ADMIN' },
+  )
+  .get(
+    '/blasts/compliance/suppressions',
+    async ({ user, query }) => {
+      const page = Math.max(1, Number(query.page) || 1);
+      const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
+      const skip = (page - 1) * limit;
+      const search = (query.search || '').trim();
+
+      const where = {
+        userId: user!.id,
+        ...(search
+          ? {
+              OR: [
+                { phone: { contains: search, mode: 'insensitive' as const } },
+                { reason: { contains: search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      };
+
+      const [data, total] = await Promise.all([
+        db.suppressionList.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+        db.suppressionList.count({ where }),
+      ]);
+
+      return {
+        data,
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      };
+    },
+    {
+      role: 'ADMIN',
+      query: t.Object({
+        page: t.Optional(t.String()),
+        limit: t.Optional(t.String()),
+        search: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    '/blasts/compliance/suppressions',
+    async ({ user, body }) => {
+      const phone = normalizePhoneNumber(body.phone);
+      if (phone.length < 10) {
+        return new Response(JSON.stringify({ error: 'Invalid phone number' }), {
+          status: 400,
+        });
+      }
+
+      const entry = await db.suppressionList.upsert({
+        where: {
+          userId_phone: {
+            userId: user!.id,
+            phone,
+          },
+        },
+        update: {
+          reason: body.reason,
+          source: body.source || 'ADMIN',
+        },
+        create: {
+          userId: user!.id,
+          phone,
+          reason: body.reason,
+          source: body.source || 'ADMIN',
+        },
+      });
+
+      return entry;
+    },
+    {
+      auth: true,
+      body: t.Object({
+        phone: t.String(),
+        reason: t.Optional(t.String()),
+        source: t.Optional(t.String()),
+      }),
+    },
+  )
+  .delete(
+    '/blasts/compliance/suppressions/:id',
+    async ({ user, params }) => {
+      const record = await db.suppressionList.findFirst({
+        where: { id: params.id, userId: user!.id },
+        select: { id: true },
+      });
+
+      if (!record) {
+        return new Response(
+          JSON.stringify({ error: 'Suppression record not found' }),
+          { status: 404 },
+        );
+      }
+
+      await db.suppressionList.delete({ where: { id: record.id } });
+      return { success: true };
+    },
+    { role: 'ADMIN' },
+  )
+  .post(
+    '/blasts/preview',
+    async ({ body }) => {
+      const variables = parseOptionalJson(body.variablesData) || {};
+      const rendered = applyTemplateVariables(body.message, variables);
+
+      return {
+        message: body.message,
+        rendered,
+        variables,
+      };
+    },
+    {
+      role: 'ADMIN',
+      body: t.Object({
+        message: t.String(),
+        variablesData: t.Optional(t.String()),
+      }),
+    },
   )
   // ==================== WALLET ====================
   .get(

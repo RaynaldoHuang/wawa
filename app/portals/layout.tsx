@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
-  Smartphone,
   Wallet,
   Settings,
   LogOut,
@@ -49,11 +48,6 @@ const menuItems = [
     title: 'Dashboard',
     icon: LayoutDashboard,
     href: '/portals',
-  },
-  {
-    title: 'Devices',
-    icon: Smartphone, // Still used in menuItems
-    href: '/portals/devices',
   },
   {
     title: 'Wallet',
@@ -187,13 +181,20 @@ export default function PortalsLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, isPending } = useSession();
 
   React.useEffect(() => {
-    if (!isPending && session?.user && (session.user as any).role === 'ADMIN') {
+    // Only redirect admins to admin panel when accessing root /portals
+    if (
+      !isPending &&
+      session?.user &&
+      (session.user as any).role === 'ADMIN' &&
+      pathname === '/portals'
+    ) {
       router.replace('/admin/dashboard');
     }
-  }, [session, isPending, router]);
+  }, [session, isPending, router, pathname]);
 
   if (isPending) {
     return null; // or a loading spinner

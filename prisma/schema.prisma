@@ -125,41 +125,87 @@ model Withdrawal {
 }
 
 model BlastJob {
-  id            String           @id @default(cuid())
-  userId        String
-  deviceId      String
-  totalMessages Int              @default(0)
-  sentCount     Int              @default(0)
-  failedCount   Int              @default(0)
-  status        BlastJobStatus   @default(QUEUED)
-  message       String
-  startedAt     DateTime?
-  completedAt   DateTime?
-  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  device        Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  recipients    BlastRecipient[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id             String           @id @default(cuid())
+  userId         String
+  deviceId       String
+  title          String?
+  totalMessages  Int              @default(0)
+  sentCount      Int              @default(0)
+  failedCount    Int              @default(0)
+  status         BlastJobStatus   @default(QUEUED)
+  message        String
+  scheduleAt     DateTime?
+  timezone       String?
+  templateName   String?
+  templateData   Json?
+  attachmentUrl  String?
+  attachmentType String?
+  ctaData        Json?
+  variablesData  Json?
+  campaignType   String           @default("MARKETING")
+  startedAt      DateTime?
+  completedAt    DateTime?
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  recipients     BlastRecipient[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([userId])
   @@index([deviceId])
   @@index([status])
+  @@index([scheduleAt])
   @@map("blast_jobs")
 }
 
 model BlastRecipient {
-  id        String    @id @default(cuid())
-  jobId     String
-  phone     String
-  status    String    @default("PENDING") // PENDING, SENT, FAILED
-  sentAt    DateTime?
-  errorMsg  String?
-  job       BlastJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
+  id              String    @id @default(cuid())
+  jobId           String
+  phone           String
+  status          String    @default("PENDING") // PENDING, SENT, FAILED
+  recipientName   String?
+  renderedMessage String?
+  metaData        Json?
+  sentAt          DateTime?
+  errorMsg        String?
+  job             BlastJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
 
   @@index([jobId])
   @@index([status])
   @@map("blast_recipients")
+}
+
+model ContactConsent {
+  id          String    @id @default(cuid())
+  userId      String
+  phone       String
+  source      String? // IMPORT, FORM, API
+  notes       String?
+  consentedAt DateTime  @default(now())
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, phone])
+  @@index([userId])
+  @@index([phone])
+  @@map("contact_consents")
+}
+
+model SuppressionList {
+  id        String   @id @default(cuid())
+  userId    String?
+  phone     String
+  reason    String?
+  source    String? // KEYWORD, ADMIN, SYSTEM
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, phone])
+  @@index([userId])
+  @@index([phone])
+  @@map("suppression_lists")
 }
 
 model Session {

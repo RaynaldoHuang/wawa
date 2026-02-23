@@ -5,6 +5,7 @@ import {
   CreditCard,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Settings,
   ShieldCheck,
   Smartphone,
@@ -55,6 +56,11 @@ const adminMenuItems = [
     title: 'Devices',
     icon: Smartphone,
     href: '/admin/devices',
+  },
+  {
+    title: 'Blast',
+    icon: Megaphone,
+    href: '/admin/blasts',
   },
   {
     title: 'Payments',

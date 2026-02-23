@@ -25,6 +25,13 @@ export interface WADevice {
   pairingCode?: string;
 }
 
+export interface WASendOptions {
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'document' | 'video';
+  ctaLabel?: string;
+  ctaUrl?: string;
+}
+
 // Store for active connections
 const deviceStore = new Map<string, WADevice>();
 const connectingStore = new Map<string, Promise<WADevice>>();
@@ -259,6 +266,7 @@ export class WAManager {
     deviceId: string,
     to: string,
     content: string,
+    options: WASendOptions = {},
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const device = deviceStore.get(deviceId);
 
@@ -270,7 +278,47 @@ export class WAManager {
       // Format number: remove non-digits and add @s.whatsapp.net
       const jid = to.replace(/\D/g, '') + '@s.whatsapp.net';
 
-      const result = await device.socket.sendMessage(jid, { text: content });
+      let finalText = content;
+      if (options.ctaLabel && options.ctaUrl) {
+        finalText = `${content}\n\n${options.ctaLabel}: ${options.ctaUrl}`;
+      }
+
+      let result;
+
+      if (options.attachmentUrl) {
+        const response = await fetch(options.attachmentUrl);
+        if (!response.ok) {
+          return {
+            success: false,
+            error: `Failed to fetch attachment (${response.status})`,
+          };
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+
+        if (options.attachmentType === 'video') {
+          result = await device.socket.sendMessage(jid, {
+            video: buffer,
+            caption: finalText,
+          });
+        } else if (options.attachmentType === 'document') {
+          result = await device.socket.sendMessage(jid, {
+            document: buffer,
+            fileName: 'attachment',
+            mimetype:
+              response.headers.get('content-type') ||
+              'application/octet-stream',
+            caption: finalText,
+          });
+        } else {
+          result = await device.socket.sendMessage(jid, {
+            image: buffer,
+            caption: finalText,
+          });
+        }
+      } else {
+        result = await device.socket.sendMessage(jid, { text: finalText });
+      }
 
       return {
         success: true,

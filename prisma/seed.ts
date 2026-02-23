@@ -4,7 +4,6 @@ import {
   Role,
   DeviceStatus,
   WithdrawalStatus,
-  BlastJobStatus,
 } from './generated/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -20,6 +19,8 @@ async function main() {
   // 1. Cleanup existing data (optional, create fresh state)
   // Be careful in production, but fine for dev seed
   await prisma.auditLog.deleteMany();
+  await prisma.suppressionList.deleteMany();
+  await prisma.contactConsent.deleteMany();
   await prisma.blastRecipient.deleteMany();
   await prisma.blastJob.deleteMany();
   await prisma.withdrawal.deleteMany();
@@ -53,6 +54,26 @@ async function main() {
         key: 'MAX_DEVICES_PER_USER',
         value: '5',
         description: 'Maximum WhatsApp devices per user',
+      },
+      {
+        key: 'BLAST_QUIET_HOURS_START',
+        value: '21:00',
+        description: 'Start of quiet hours for marketing blast (local time)',
+      },
+      {
+        key: 'BLAST_QUIET_HOURS_END',
+        value: '08:00',
+        description: 'End of quiet hours for marketing blast (local time)',
+      },
+      {
+        key: 'BLAST_OPTOUT_KEYWORDS',
+        value: 'STOP,UNSUBSCRIBE,BERHENTI',
+        description: 'Comma-separated opt-out keywords for suppression flow',
+      },
+      {
+        key: 'BLAST_MAX_RECIPIENTS_PER_JOB',
+        value: '5000',
+        description: 'Maximum recipients allowed per blast job',
       },
     ],
   });
@@ -198,7 +219,43 @@ async function main() {
   }
   console.log('users created');
 
-  // 6. Audit Logs
+  // 6. Compliance Seed Data
+  await prisma.contactConsent.createMany({
+    data: [
+      {
+        userId: 'user-alice',
+        phone: '628123450001',
+        source: 'IMPORT',
+        notes: 'Imported from legacy CRM',
+      },
+      {
+        userId: 'user-bob',
+        phone: '628123450002',
+        source: 'FORM',
+        notes: 'Landing page opt-in',
+      },
+    ],
+  });
+
+  await prisma.suppressionList.createMany({
+    data: [
+      {
+        userId: 'user-alice',
+        phone: '628123459999',
+        reason: 'User sent STOP',
+        source: 'KEYWORD',
+      },
+      {
+        userId: null,
+        phone: '628111111111',
+        reason: 'Global blocked recipient',
+        source: 'ADMIN',
+      },
+    ],
+  });
+  console.log('🛡️ Created Compliance Seed Data');
+
+  // 7. Audit Logs
   await prisma.auditLog.createMany({
     data: [
       {
