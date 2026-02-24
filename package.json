@@ -34,6 +34,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@types/pg": "^8.16.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "archiver": "^7.0.1",
     "better-auth": "^1.4.17",
     "bullmq": "^5.67.2",
     "class-variance-authority": "^0.7.1",

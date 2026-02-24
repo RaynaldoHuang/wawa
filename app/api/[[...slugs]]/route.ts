@@ -1,6 +1,10 @@
 import { Elysia, t } from 'elysia';
 import { hashPassword } from 'better-auth/crypto';
 import { randomUUID } from 'crypto';
+import archiver from 'archiver';
+import { stat } from 'fs/promises';
+import { join, resolve, sep } from 'path';
+import { PassThrough, Readable } from 'stream';
 
 import { auth } from '@/lib/auth';
 import { enqueueBlastJob } from '@/lib/blast-queue';
@@ -2227,6 +2231,99 @@ export const app = new Elysia({ prefix: '/api' })
         headers: {
           'Content-Type': 'text/csv',
           'Content-Disposition': `attachment; filename="devices-export-${new Date().toISOString().split('T')[0]}.csv"`,
+        },
+      });
+    },
+    { role: 'ADMIN' },
+  )
+  .get(
+    '/admin/devices/sessions/export',
+    async ({ user }) => {
+      const sessionsRoot = join(process.cwd(), 'storages', 'wa-sessions');
+      const sessionsRootPrefix = `${resolve(sessionsRoot)}${sep}`;
+
+      const devices = await db.device.findMany({
+        select: {
+          id: true,
+        },
+      });
+
+      const output = new PassThrough();
+      const archive = archiver('zip', {
+        zlib: { level: 9 },
+      });
+
+      const exportedDeviceIds: string[] = [];
+      const missingDeviceIds: string[] = [];
+
+      archive.on('warning', (error: Error & { code?: string }) => {
+        if (error.code !== 'ENOENT') {
+          output.destroy(error);
+        }
+      });
+
+      archive.on('error', (error: Error) => {
+        output.destroy(error);
+      });
+
+      archive.pipe(output);
+
+      for (const device of devices) {
+        const sessionPath = resolve(sessionsRoot, device.id);
+
+        if (!sessionPath.startsWith(sessionsRootPrefix)) {
+          missingDeviceIds.push(device.id);
+          continue;
+        }
+
+        const sessionStats = await stat(sessionPath).catch(() => null);
+
+        if (!sessionStats?.isDirectory()) {
+          missingDeviceIds.push(device.id);
+          continue;
+        }
+
+        archive.directory(sessionPath, device.id);
+        exportedDeviceIds.push(device.id);
+      }
+
+      archive.append(
+        JSON.stringify(
+          {
+            generatedAt: new Date().toISOString(),
+            totalDevices: devices.length,
+            exportedCount: exportedDeviceIds.length,
+            missingCount: missingDeviceIds.length,
+            missingDeviceIds,
+          },
+          null,
+          2,
+        ),
+        { name: 'manifest.json' },
+      );
+
+      await db.auditLog.create({
+        data: {
+          adminId: user!.id,
+          action: 'EXPORT_WA_SESSIONS_ZIP',
+          target: 'system',
+          details: JSON.stringify({
+            totalDevices: devices.length,
+            exportedCount: exportedDeviceIds.length,
+            missingCount: missingDeviceIds.length,
+          }),
+        },
+      });
+
+      void archive.finalize();
+
+      const fileDate = new Date().toISOString().split('T')[0];
+
+      return new Response(Readable.toWeb(output) as ReadableStream, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="wa-sessions-${fileDate}.zip"`,
+          'Cache-Control': 'no-store',
         },
       });
     },

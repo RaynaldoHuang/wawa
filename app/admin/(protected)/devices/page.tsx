@@ -94,6 +94,10 @@ export default function AdminDevicesPage() {
     window.open(`/api/admin/devices/export?${params}`, '_blank');
   };
 
+  const handleExportSessionsZip = () => {
+    window.open('/api/admin/devices/sessions/export', '_blank');
+  };
+
   // Force disconnect mutation
   const disconnectMutation = useMutation({
     mutationFn: async (deviceId: string) => {
@@ -291,10 +295,16 @@ export default function AdminDevicesPage() {
           />
         </div>
 
-        <Button variant='outline' onClick={handleExport} className='ml-auto'>
-          <FileDown className='mr-2 h-4 w-4' />
-          Export CSV
-        </Button>
+        <div className='ml-auto flex items-center gap-2'>
+          <Button variant='outline' onClick={handleExportSessionsZip}>
+            <FileDown className='mr-2 h-4 w-4' />
+            Export Sessions ZIP
+          </Button>
+          <Button variant='outline' onClick={handleExport}>
+            <FileDown className='mr-2 h-4 w-4' />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       <DataTable
