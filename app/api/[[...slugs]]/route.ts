@@ -82,17 +82,19 @@ function isInQuietHours(
   return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 }
 
-function parseOptionalJson(value?: string): Record<string, unknown> | null {
-  if (!value) return null;
+function parseOptionalJson(
+  value?: string,
+): Record<string, unknown> | undefined {
+  if (!value) return undefined;
 
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return null;
+      return undefined;
     }
     return parsed;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
