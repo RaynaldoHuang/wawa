@@ -793,7 +793,9 @@ export const app = new Elysia({ prefix: '/api' })
         select: { phone: true },
       });
 
-      const suppressedPhones = new Set(suppressed.map((item) => item.phone));
+      const suppressedPhones = new Set(
+        suppressed.map((item: any) => item.phone),
+      );
       const filteredRecipients = recipients.filter(
         (phone) => !suppressedPhones.has(phone),
       );
@@ -994,7 +996,7 @@ export const app = new Elysia({ prefix: '/api' })
       });
 
       await db.blastRecipient.createMany({
-        data: sourceJob.recipients.map((recipient) => ({
+        data: sourceJob.recipients.map((recipient: any) => ({
           jobId: retryJob.id,
           phone: recipient.phone,
           recipientName: recipient.recipientName,
@@ -1336,7 +1338,7 @@ export const app = new Elysia({ prefix: '/api' })
       ]);
 
       return {
-        data: data.map((campaign) => ({
+        data: data.map((campaign: any) => ({
           ...campaign,
           blastCount: campaign._count.blastJobs,
           _count: undefined,
@@ -1363,7 +1365,7 @@ export const app = new Elysia({ prefix: '/api' })
         },
       });
 
-      return campaigns.map((campaign) => ({
+      return campaigns.map((campaign: any) => ({
         id: campaign.id,
         name: campaign.name,
         campaignType: campaign.campaignType,
@@ -1644,7 +1646,7 @@ export const app = new Elysia({ prefix: '/api' })
       ]);
 
       return {
-        data: data.map((user) => ({
+        data: data.map((user: any) => ({
           ...user,
           deviceCount: user._count.devices,
           _count: undefined,
