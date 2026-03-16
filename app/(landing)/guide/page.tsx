@@ -1,3 +1,4 @@
+import { Metadata } from 'next';
 import Link from 'next/link';
 import {
   BookOpen,
@@ -7,6 +8,12 @@ import {
   HelpCircle,
   MessageSquare,
 } from 'lucide-react';
+
+export const metadata: Metadata = {
+  title: 'Panduan Pengguna',
+  description:
+    'Cara mudah menggunakan Gudang WA: Daftar, hubungkan WhatsApp, dan mulai hasilkan komisi dari pesan terkirim.',
+};
 
 const steps = [
   {

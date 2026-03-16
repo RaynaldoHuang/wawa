@@ -1,4 +1,11 @@
+import { Metadata } from 'next';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Kebijakan Privasi',
+  description:
+    'Pelajari bagaimana Gudang WA melindungi data Anda dan aturan penggunaan nomor WhatsApp untuk komisi.',
+};
 
 export default function PrivacyPolicyPage() {
   return (
