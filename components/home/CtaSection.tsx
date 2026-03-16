@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react';
+import Link from 'next/link';
 
 export default function CtaSection() {
   return (
@@ -19,12 +20,18 @@ export default function CtaSection() {
             </div>
 
             <div className='mt-8 flex flex-col sm:flex-row gap-4 justify-center items-center w-full sm:w-auto'>
-              <button className='bg-[#33BB5D] text-white px-6 py-3 cursor-pointer rounded-xl font-medium hover:bg-[#33BB5D]/90 transition-all w-full sm:w-auto text-center'>
+              <Link
+                href='/auth/register'
+                className='bg-[#33BB5D] text-white px-6 py-3 cursor-pointer rounded-xl font-medium hover:bg-[#33BB5D]/90 transition-all w-full sm:w-auto text-center'
+              >
                 Daftar Gratis Sekarang
-              </button>
-              <button className='border border-gray-300 bg-white/50 text-[#0A2E1E] px-8 py-3 rounded-xl font-medium hover:bg-white transition-all cursor-pointer w-full sm:w-auto text-center'>
+              </Link>
+              <Link
+                href='/auth/login'
+                className='border border-gray-300 bg-white/50 text-[#0A2E1E] px-8 py-3 rounded-xl font-medium hover:bg-white transition-all cursor-pointer w-full sm:w-auto text-center'
+              >
                 Sudah Punya Akun
-              </button>
+              </Link>
             </div>
 
             <div className='flex flex-col md:flex-row gap-4 md:gap-8 mt-10 justify-center items-center'>

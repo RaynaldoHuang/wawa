@@ -9,7 +9,10 @@ import {
 export default function HowSection() {
   return (
     <>
-      <section className='bg-gray-50 py-16 px-4 md:px-6'>
+      <section
+        id='keuntungan'
+        className='scroll-mt-28 bg-gray-50 py-16 px-4 md:px-6'
+      >
         <div className='max-w-7xl mx-auto'>
           <div className='bg-white py-2 ps-2 pe-4 flex items-center gap-3 w-fit rounded-full'>
             <div className='bg-[#33BB5D] text-white p-1 rounded-full'>

@@ -10,7 +10,7 @@ import form from '@/public/webp/form.webp';
 export default function FlowSection() {
   return (
     <>
-      <section>
+      <section id='cara-kerja' className='scroll-mt-28'>
         <div className='max-w-7xl mx-auto px-4 md:px-6'>
           <div className='py-16 lg:py-28'>
             <div className='bg-gray-50 py-2 ps-2 pe-4 flex items-center gap-3 w-fit rounded-full'>

@@ -1,8 +1,12 @@
+'use client';
 import Image from 'next/image';
 
 import img from '@/public/webp/img1.webp';
+import { useRouter } from 'next/navigation';
 
 export default function HomeSection() {
+  const router = useRouter();
+
   return (
     <>
       <section>
@@ -51,10 +55,16 @@ export default function HomeSection() {
                   </p>
 
                   <div className='mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start'>
-                    <button className='bg-[#33BB5D] text-white px-6 py-3 cursor-pointer rounded-xl font-medium hover:bg-[#33BB5D]/90 transition-all text-sm lg:text-base w-full sm:w-auto'>
+                    <button
+                      className='bg-[#33BB5D] text-white px-6 py-3 cursor-pointer rounded-xl font-medium hover:bg-[#33BB5D]/90 transition-all text-sm lg:text-base w-full sm:w-auto'
+                      onClick={() => router.push('/auth/register')}
+                    >
                       Mulai Sekarang
                     </button>
-                    <button className='border border-gray-300 bg-white/50 text-[#0A2E1E] px-8 py-3 rounded-xl font-medium hover:bg-white transition-all cursor-pointer text-sm lg:text-base w-full sm:w-auto'>
+                    <button
+                      className='border border-gray-300 bg-white/50 text-[#0A2E1E] px-8 py-3 rounded-xl font-medium hover:bg-white transition-all cursor-pointer text-sm lg:text-base w-full sm:w-auto'
+                      onClick={() => router.push('/guide')}
+                    >
                       Cara Kerja Gudang WA
                     </button>
                   </div>
@@ -78,22 +88,24 @@ export default function HomeSection() {
                 </div>
 
                 <div className='absolute right-0 bottom-20 bg-white rounded-xl shadow-lg p-4 w-50 z-50'>
-                  <p className='text-xs text-gray-500'>Credit Card</p>
-                  <p className='font-semibold text-sm'>**** 2345</p>
-                  <p className='mt-2 text-green-600 font-bold'>Rp10.000.000</p>
+                  <p className='text-xs text-gray-500'>Pengguna Terdaftar</p>
+                  <p className='font-semibold text-sm'>15.000+ Orang</p>
+                  <p className='mt-2 text-green-600 font-bold'>
+                    +20% bulan ini
+                  </p>
                 </div>
 
                 {/* CARD KANAN ATAS */}
-                <div className='absolute right-0 top-40 bg-[#1F3D3A] text-white rounded-xl shadow-md p-4 w-37.5'>
+                <div className='absolute right-0 top-25 lg:top-40 bg-[#1F3D3A] text-white rounded-xl shadow-md p-4 w-37.5'>
                   <p className='text-xs opacity-80'>Pendapatan</p>
-                  <p className='text-lg font-bold'>Rp3.450.340</p>
+                  <p className='text-base lg:text-lg font-bold'>Rp3.450.340</p>
                 </div>
 
                 {/* CARD KANAN BAWAH */}
-                <div className='absolute -left-10 top-48 bg-white rounded-xl shad p-4 w-45'>
+                <div className='absolute -left-2 lg:-left-10 top-48 bg-white rounded-xl p-4 w-45'>
                   <p className='text-xs text-gray-500'>Total Saldo</p>
-                  <p className='text-xl font-bold'>Rp50.876.580</p>
-                  <p className='text-xs text-green-600 mt-1'>+12% this month</p>
+                  <p className='text-base lg:text-xl font-bold'>Rp50.876.580</p>
+                  <p className='text-xs text-green-600 mt-1'>+12% bulan ini</p>
                 </div>
               </div>
             </div>

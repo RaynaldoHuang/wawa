@@ -8,7 +8,10 @@ import defaultimage from '@/public/webp/avatardefault.webp';
 export default function TestiSection() {
   return (
     <>
-      <section className='bg-gray-50 py-16 lg:py-20'>
+      <section
+        id='testimoni'
+        className='scroll-mt-28 bg-gray-50 py-16 lg:py-20'
+      >
         <div className='max-w-7xl mx-auto flex flex-col items-center px-4 md:px-6'>
           <div className='bg-white py-2 ps-2 pe-4 flex items-center gap-3 w-fit rounded-full'>
             <div className='bg-[#33BB5D] text-white p-1 rounded-full'>

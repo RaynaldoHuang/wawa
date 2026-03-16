@@ -57,13 +57,22 @@ export default function FooterSection() {
                   </h1>
 
                   <div className='flex flex-col mt-6 gap-3'>
-                    <Link href={''} className='font-medium text-[#0A2E1E]'>
+                    <Link
+                      href={'#keuntungan'}
+                      className='font-medium text-[#0A2E1E]'
+                    >
                       Keuntungan
                     </Link>
-                    <Link href={''} className='font-medium text-[#0A2E1E]'>
+                    <Link
+                      href={'#cara-kerja'}
+                      className='font-medium text-[#0A2E1E]'
+                    >
                       Cara Kerja
                     </Link>
-                    <Link href={''} className='font-medium text-[#0A2E1E]'>
+                    <Link
+                      href={'#testimoni'}
+                      className='font-medium text-[#0A2E1E]'
+                    >
                       Testimoni
                     </Link>
                   </div>
@@ -75,13 +84,19 @@ export default function FooterSection() {
                   </h1>
 
                   <div className='flex flex-col mt-6 gap-3'>
-                    <Link href={''} className='font-medium text-[#0A2E1E]'>
+                    <Link
+                      href={'/privacy-policy'}
+                      className='font-medium text-[#0A2E1E] hover:text-[#33BB5D] transition-colors'
+                    >
                       Kebijakan Privasi
                     </Link>
-                    <Link href={''} className='font-medium text-[#0A2E1E]'>
+                    {/* <Link href={''} className='font-medium text-[#0A2E1E]'>
                       Live Chat
-                    </Link>
-                    <Link href={''} className='font-medium text-[#0A2E1E]'>
+                    </Link> */}
+                    <Link
+                      href={'/guide'}
+                      className='font-medium text-[#0A2E1E] hover:text-[#33BB5D] transition-colors'
+                    >
                       Panduan
                     </Link>
                   </div>

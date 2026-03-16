@@ -77,7 +77,7 @@ const RegisterForm = ({ className, ...props }: React.ComponentProps<'div'>) => {
 
   return (
     <div className={cn('flex flex-col gap-6 min-w-sm', className)} {...props}>
-      <Card>
+      <Card className='border-none rounded-2xl shadow-2xl w-full'>
         <CardHeader className='text-center'>
           <CardTitle className='text-xl'>Selamat Datang!</CardTitle>
           <CardDescription>

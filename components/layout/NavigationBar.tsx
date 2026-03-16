@@ -1,35 +1,87 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import logo from '@/public/webp/logo.webp';
+import { cn } from '@/lib/utils';
 
 export default function NavBar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 16);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return;
+    }
+
+    document.body.style.overflow = '';
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
   return (
-    <header className='absolute top-0 left-0 z-50 w-full'>
-      <div className='mx-auto max-w-7xl px-4 md:px-6 py-6'>
+    <motion.header
+      initial={false}
+      animate={{ opacity: isScrolled || isOpen ? 1 : 0.98 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className={cn(
+        `left-0 z-[70] w-full transition-[background-color,box-shadow,backdrop-filter] duration-300`,
+        isScrolled || isOpen
+          ? 'fixed top-0 bg-white shadow-sm border-b border-[#cfe8e3]/60'
+          : 'absolute top-0 bg-transparent',
+      )}
+    >
+      <div
+        className={cn(
+          'mx-auto max-w-7xl px-4 md:px-6 transition-[padding] duration-300',
+          isScrolled || isOpen ? 'py-4' : 'py-6',
+        )}
+      >
         <div className='relative flex items-center justify-between'>
           {/* LOGO */}
-          <div className='z-50'>
+          <Link href='/' className='z-[80] transition-opacity hover:opacity-80'>
             <Image src={logo} alt='Logo' className='w-32 md:w-42' />
-          </div>
+          </Link>
 
           {/* DESKTOP MENU - CENTER */}
           <div className='hidden lg:block absolute left-1/2 -translate-x-1/2'>
             <nav className='flex gap-8 font-medium text-[#0E4643]'>
-              <Link href='' className='hover:text-[#33BB5D] transition-colors'>
+              <Link
+                href='#keuntungan'
+                className='hover:text-[#33BB5D] transition-colors'
+              >
                 Keuntungan
               </Link>
-              <Link href='' className='hover:text-[#33BB5D] transition-colors'>
+              <Link
+                href='#cara-kerja'
+                className='hover:text-[#33BB5D] transition-colors'
+              >
                 Cara Kerja
               </Link>
-              <Link href='' className='hover:text-[#33BB5D] transition-colors'>
+              <Link
+                href='#testimoni'
+                className='hover:text-[#33BB5D] transition-colors'
+              >
                 Testimoni
               </Link>
             </nav>
@@ -53,7 +105,7 @@ export default function NavBar() {
 
           {/* MOBILE MENU BUTTON */}
           <button
-            className='lg:hidden z-50 text-[#0E4643]'
+            className='lg:hidden z-[80] text-[#0E4643]'
             onClick={() => setIsOpen(!isOpen)}
           >
             {isOpen ? <X size={28} /> : <Menu size={28} />}
@@ -67,7 +119,7 @@ export default function NavBar() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className='fixed inset-0 bg-white z-40 flex flex-col items-center justify-center space-y-8 lg:hidden'
+                className='fixed inset-0 z-[75] bg-white flex flex-col items-center justify-center space-y-8 lg:hidden'
               >
                 <nav className='flex flex-col items-center gap-6 font-medium text-xl text-[#0E4643]'>
                   <motion.div
@@ -76,7 +128,7 @@ export default function NavBar() {
                     transition={{ delay: 0.1 }}
                   >
                     <Link
-                      href=''
+                      href='#keuntungan'
                       onClick={() => setIsOpen(false)}
                       className='hover:text-[#33BB5D]'
                     >
@@ -89,7 +141,7 @@ export default function NavBar() {
                     transition={{ delay: 0.2 }}
                   >
                     <Link
-                      href=''
+                      href='#cara-kerja'
                       onClick={() => setIsOpen(false)}
                       className='hover:text-[#33BB5D]'
                     >
@@ -102,7 +154,7 @@ export default function NavBar() {
                     transition={{ delay: 0.3 }}
                   >
                     <Link
-                      href=''
+                      href='#testimoni'
                       onClick={() => setIsOpen(false)}
                       className='hover:text-[#33BB5D]'
                     >
@@ -111,14 +163,14 @@ export default function NavBar() {
                   </motion.div>
                 </nav>
 
-                <div className='flex flex-col items-center gap-4 mt-8'>
+                <div className='flex flex-col items-center gap-6 mt-8'>
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 }}
                   >
                     <Link
-                      href=''
+                      href='/auth/login'
                       onClick={() => setIsOpen(false)}
                       className='font-medium text-[#0E4643] text-lg hover:text-[#33BB5D]'
                     >
@@ -130,9 +182,13 @@ export default function NavBar() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 }}
                   >
-                    <button className='rounded-full bg-[#33BB5D] px-8 py-3 font-semibold text-white cursor-pointer hover:bg-[#33BB5D]/90 transition-all'>
+                    <Link
+                      href='/auth/register'
+                      onClick={() => setIsOpen(false)}
+                      className='rounded-full bg-[#33BB5D] px-8 py-3 font-semibold text-white cursor-pointer hover:bg-[#33BB5D]/90 transition-all'
+                    >
                       Daftar Gratis
-                    </button>
+                    </Link>
                   </motion.div>
                 </div>
               </motion.div>
@@ -140,6 +196,6 @@ export default function NavBar() {
           </AnimatePresence>
         </div>
       </div>
-    </header>
+    </motion.header>
   );
 }

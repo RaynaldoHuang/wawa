@@ -71,7 +71,7 @@ export function LoginForm({
 
   return (
     <div className={cn('flex flex-col gap-6 min-w-sm', className)} {...props}>
-      <Card>
+      <Card className='border-none rounded-2xl shadow-2xl w-full'>
         <CardHeader className='text-center'>
           <CardTitle className='text-xl'>Selamat Datang!</CardTitle>
           <CardDescription>
@@ -135,8 +135,20 @@ export function LoginForm({
       </Card>
       <FieldDescription className='px-6 text-center'>
         Dengan menekan tombol masuk, Anda setuju dengan{' '}
-        <Link href='#'>Syarat dan Ketentuan</Link> dan{' '}
-        <Link href='#'>Kebijakan Privasi</Link>.
+        <Link
+          href='/guide'
+          className='underline underline-offset-4 hover:text-[#33BB5D]'
+        >
+          Syarat dan Ketentuan
+        </Link>{' '}
+        dan{' '}
+        <Link
+          href='/privacy-policy'
+          className='underline underline-offset-4 hover:text-[#33BB5D]'
+        >
+          Kebijakan Privasi
+        </Link>
+        .
       </FieldDescription>
     </div>
   );
