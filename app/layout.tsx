@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     'api whatsapp',
     'gudang wa',
   ],
-  authors: [{ name: 'Ciptacode' }],
+  authors: [{ name: 'Gudang WA' }],
   metadataBase: new URL('https://gudangwa.com'), // Ganti dengan domain produksi Anda
   openGraph: {
     type: 'website',
