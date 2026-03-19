@@ -10,6 +10,7 @@ import {
   LogOut,
   ChevronDown,
   User,
+  Phone,
 } from 'lucide-react';
 // ... imports ...
 
@@ -48,6 +49,11 @@ const menuItems = [
     title: 'Dashboard',
     icon: LayoutDashboard,
     href: '/portals',
+  },
+  {
+    title: 'Devices',
+    icon: Phone,
+    href: '/portals/devices',
   },
   {
     title: 'Wallet',
