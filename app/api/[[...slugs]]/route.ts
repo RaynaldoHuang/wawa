@@ -36,7 +36,6 @@ type RecipientMetaMap = Record<
   string,
   {
     name?: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
   }
 >;
@@ -83,12 +82,10 @@ function isInQuietHours(
   return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseOptionalJson(value?: string): Record<string, any> | undefined {
   if (!value) return undefined;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parsed = JSON.parse(value) as Record<string, any>;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return undefined;
@@ -137,9 +134,12 @@ export const app = new Elysia({ prefix: '/api' })
     role: (role: 'ADMIN' | 'USER') => ({
       beforeHandle({ user }) {
         if (!user) return new Response('Unauthorized', { status: 401 });
-        const userWithRole = user as typeof user & { role: string };
-        if (role && userWithRole.role !== role)
+        const userWithRole = user as typeof user & {
+          role?: string;
+        };
+        if (!userWithRole.role || userWithRole.role !== role) {
           return new Response('Forbidden', { status: 403 });
+        }
       },
     }),
     auth: () => ({
@@ -254,7 +254,7 @@ export const app = new Elysia({ prefix: '/api' })
       });
       return devices;
     },
-    { role: 'ADMIN' },
+    { auth: true },
   )
   .post(
     '/devices/connect',
@@ -313,51 +313,95 @@ export const app = new Elysia({ prefix: '/api' })
         setTimeout(() => settleOnce({}), 15000);
       });
 
+      const connectOnce = async () => {
+        await waManager.connect(device.id, {
+          phoneNumber,
+          usePairingCode,
+          onQR: (qr) => {
+            qrCode = qr;
+            settleOnce({ qr });
+          },
+          onPairingCode: (code) => {
+            pairingCode = code;
+            settleOnce({ pairingCode: code });
+          },
+          onConnected: async (phone) => {
+            await db.device.update({
+              where: { id: device.id },
+              data: {
+                status: 'CONNECTED',
+                phoneNumber: phone,
+                connectedAt: new Date(),
+              },
+            });
+            settleOnce({ status: 'CONNECTED' });
+          },
+          onDisconnected: async () => {
+            await db.device.update({
+              where: { id: device.id },
+              data: { status: 'DISCONNECTED' },
+            });
+          },
+        });
+      };
+
       // Connect via WAManager
-      await waManager.connect(device.id, {
-        phoneNumber,
-        usePairingCode,
-        onQR: (qr) => {
-          qrCode = qr;
-          settleOnce({ qr });
-        },
-        onPairingCode: (code) => {
-          pairingCode = code;
-          settleOnce({ pairingCode: code });
-        },
-        onConnected: async (phone) => {
-          await db.device.update({
-            where: { id: device.id },
-            data: {
-              status: 'CONNECTED',
-              phoneNumber: phone,
-              connectedAt: new Date(),
-            },
-          });
-          settleOnce({ status: 'CONNECTED' });
-        },
-        onDisconnected: async () => {
-          await db.device.update({
-            where: { id: device.id },
-            data: { status: 'DISCONNECTED' },
-          });
-        },
-      });
+      await connectOnce();
 
       const pairingResult = await pairingPromise;
 
-      const waDevice = waManager.getDevice(device.id);
+      let waDevice = waManager.getDevice(device.id);
+
+      // Fallback: if we're in QR mode and still have no QR, recreate the WA session once.
+      // This avoids the "PAIRING but no QR" indefinite loader in the UI.
+      const needsQrFallback =
+        !usePairingCode &&
+        waDevice?.status !== 'CONNECTED' &&
+        !(waDevice?.qr || pairingResult.qr || qrCode);
+
+      if (needsQrFallback) {
+        console.warn('[WA] connect fallback: recreate session', {
+          deviceId: device.id,
+        });
+
+        await waManager.disconnect(device.id, true);
+
+        // reset settle state and wait again (max ~15s)
+        qrCode = undefined;
+        pairingCode = undefined;
+        pairingSettled = false;
+        const pairingPromise2 = new Promise<{
+          qr?: string;
+          pairingCode?: string;
+          status?: 'CONNECTED';
+        }>((resolve) => {
+          settlePairing = resolve;
+          setTimeout(() => settleOnce({}), 15000);
+        });
+
+        await connectOnce();
+        const pairingResult2 = await pairingPromise2;
+        pairingResult.qr = pairingResult.qr || pairingResult2.qr;
+        pairingResult.pairingCode =
+          pairingResult.pairingCode || pairingResult2.pairingCode;
+
+        waDevice = waManager.getDevice(device.id);
+      }
 
       return {
         deviceId: device.id,
-        status: waDevice?.status || 'PAIRING',
+        // Don't report DISCONNECTED immediately during initial boot; the client should proceed to pairing
+        status:
+          waDevice?.status === 'DISCONNECTED'
+            ? 'PAIRING'
+            : waDevice?.status || 'PAIRING',
         qr: waDevice?.qr || pairingResult.qr || qrCode,
         pairingCode:
           waDevice?.pairingCode || pairingResult.pairingCode || pairingCode,
       };
     },
     {
-      role: 'ADMIN',
+      auth: true,
       body: t.Object({
         phoneNumber: t.String(),
         usePairingCode: t.Optional(t.Boolean()),
@@ -383,6 +427,10 @@ export const app = new Elysia({ prefix: '/api' })
       const resumeMethod = queryParams.method === 'code' ? 'code' : 'qr';
       let resumeQr: string | undefined;
       let resumePairingCode: string | undefined;
+      // For normal polling (no resume=1), we still want to briefly wait for the first QR/pairing code
+      // to avoid a "PAIRING but no QR" infinite loading UX.
+      const shouldWaitForPairingArtifact =
+        queryParams.wait !== '0' && queryParams.wait !== 'false';
 
       if (
         (!waDevice || waDevice.status === 'DISCONNECTED') &&
@@ -403,25 +451,28 @@ export const app = new Elysia({ prefix: '/api' })
             }
           };
 
-          const resumePromise = isResumeRequest
+          const shouldCreateWaitPromise = isResumeRequest || shouldWaitForPairingArtifact;
+          const resumePromise = shouldCreateWaitPromise
             ? new Promise<{ qr?: string; pairingCode?: string }>((resolve) => {
                 settleResume = resolve;
-                setTimeout(() => settleResumeOnce({}), 8000);
+                setTimeout(() => settleResumeOnce({}), isResumeRequest ? 8000 : 3000);
               })
             : null;
 
           waDevice = await waManager.connect(device.id, {
             phoneNumber: device.phoneNumber,
-            usePairingCode: isResumeRequest && resumeMethod === 'code',
+            usePairingCode:
+              (isResumeRequest && resumeMethod === 'code') ||
+              (!isResumeRequest && resumeMethod === 'code'),
             onQR: (qr) => {
               resumeQr = qr;
-              if (isResumeRequest && resumeMethod === 'qr') {
+              if (resumeMethod === 'qr') {
                 settleResumeOnce({ qr });
               }
             },
             onPairingCode: (code) => {
               resumePairingCode = code;
-              if (isResumeRequest && resumeMethod === 'code') {
+              if (resumeMethod === 'code') {
                 settleResumeOnce({ pairingCode: code });
               }
             },
@@ -443,7 +494,7 @@ export const app = new Elysia({ prefix: '/api' })
             },
           });
 
-          if (isResumeRequest) {
+          if (shouldCreateWaitPromise) {
             if (waDevice?.qr && resumeMethod === 'qr') {
               settleResumeOnce({ qr: waDevice.qr });
             }
@@ -464,7 +515,7 @@ export const app = new Elysia({ prefix: '/api' })
                 ? !(waDevice?.qr || resumeQr)
                 : !(waDevice?.pairingCode || resumePairingCode);
 
-            if (stillNoPairingArtifact && waDevice?.status !== 'CONNECTED') {
+            if (isResumeRequest && stillNoPairingArtifact && waDevice?.status !== 'CONNECTED') {
               console.warn('[WA] resume fallback: recreate session', {
                 deviceId: device.id,
                 resumeMethod,
@@ -552,7 +603,7 @@ export const app = new Elysia({ prefix: '/api' })
         pairingCode: waDevice?.pairingCode || resumePairingCode,
       };
     },
-    { role: 'ADMIN' },
+    { auth: true },
   )
   .delete(
     '/devices/:id',
@@ -574,7 +625,7 @@ export const app = new Elysia({ prefix: '/api' })
 
       return { success: true };
     },
-    { role: 'ADMIN' },
+    { auth: true },
   )
   // ==================== BLASTS ====================
   .get(
@@ -988,13 +1039,10 @@ export const app = new Elysia({ prefix: '/api' })
           totalMessages: sourceJob.recipients.length,
           timezone: sourceJob.timezone,
           templateName: sourceJob.templateName,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           templateData: sourceJob.templateData as any,
           attachmentUrl: sourceJob.attachmentUrl,
           attachmentType: sourceJob.attachmentType,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ctaData: sourceJob.ctaData as any,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           variablesData: sourceJob.variablesData as any,
           campaignType: sourceJob.campaignType,
           status: 'QUEUED',
@@ -1006,7 +1054,6 @@ export const app = new Elysia({ prefix: '/api' })
           jobId: retryJob.id,
           phone: recipient.phone,
           recipientName: recipient.recipientName,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           metaData: recipient.metaData as any,
         })),
       });

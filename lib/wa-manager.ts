@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   WASocket,
   ConnectionState,
+  fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { join } from 'path';
@@ -23,6 +24,8 @@ export interface WADevice {
   phoneNumber?: string;
   qr?: string;
   pairingCode?: string;
+  lastDisconnectStatusCode?: number;
+  lastDisconnectReason?: string;
 }
 
 export interface WASendOptions {
@@ -38,6 +41,9 @@ const connectingStore = new Map<string, Promise<WADevice>>();
 
 export class WAManager {
   private static instance: WAManager;
+  private baileysVersionPromise:
+    | Promise<{ version: [number, number, number]; isLatest: boolean }>
+    | undefined;
 
   private constructor() {}
 
@@ -118,15 +124,25 @@ export class WAManager {
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
+    // Baileys recommends passing an up-to-date WA Web version.
+    // Cache it in-memory to avoid repeated network calls.
+    if (!this.baileysVersionPromise) {
+      this.baileysVersionPromise = fetchLatestBaileysVersion();
+    }
+    const { version, isLatest } = await this.baileysVersionPromise;
+
     console.info('[WA] connect start', {
       deviceId,
       usePairingCode: !!options.usePairingCode,
+      version,
+      isLatest,
     });
 
     const socket = makeWASocket({
       auth: state,
       printQRInTerminal: false,
       browser: ['WAWA Platform', 'Chrome', '120.0.0'],
+      version,
     });
 
     const device: WADevice = {
@@ -142,6 +158,12 @@ export class WAManager {
       async (update: Partial<ConnectionState>) => {
         const { connection, lastDisconnect, qr } = update;
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const disconnectMessage =
+          lastDisconnect?.error instanceof Error
+            ? lastDisconnect.error.message
+            : lastDisconnect?.error
+              ? String(lastDisconnect.error)
+              : undefined;
 
         console.info('[WA] update', {
           deviceId,
@@ -183,15 +205,27 @@ export class WAManager {
           });
 
           device.status = 'DISCONNECTED';
+          device.lastDisconnectStatusCode = statusCode;
+          device.lastDisconnectReason = disconnectMessage;
 
-          if (shouldReconnect) {
+          // statusCode 405 has been observed during handshake failures; reconnecting in a loop
+          // just hammers WA and never yields a QR. Surface it instead.
+          const shouldStop = statusCode === 405;
+
+          if (shouldReconnect && !shouldStop) {
             // Auto-reconnect
             setTimeout(() => {
               this.connect(deviceId, options);
             }, 3000);
           } else {
             deviceStore.delete(deviceId);
-            options.onDisconnected?.('Logged out');
+            options.onDisconnected?.(
+              shouldStop
+                ? 'Connection failed (status 405)'
+                : shouldReconnect
+                  ? 'Connection failed'
+                  : 'Logged out',
+            );
           }
         }
       },
